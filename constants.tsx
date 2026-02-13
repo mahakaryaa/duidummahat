@@ -85,7 +85,7 @@ export const PROJECT_DATA: Record<string, ProjectData> = {
     ],
     expenseCategories: [
       { name: 'Cinta Guru', value: 50, color: '#A68B8B' },
-      { name: 'Nov Ceria', value: 30, color: '#C9D6D9' },
+      { name: 'MAF Poncokusumo', value: 30, color: '#C9D6D9' },
       { name: 'Ops/Sarpras', value: 20, color: '#7C9B93' }
     ]
   },

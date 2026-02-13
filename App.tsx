@@ -25,6 +25,7 @@ import {
   PiggyBank
 } from 'lucide-react';
 import { PROJECT_DATA } from './constants';
+import GiftBoxAnimation from './GiftBoxAnimation';
 
 declare const gsap: any;
 
@@ -430,11 +431,24 @@ const App: React.FC = () => {
         </div>
 
         <div className="clay-card p-10 flex flex-col items-center">
-             <h3 className="text-[12px] font-black uppercase tracking-widest text-main mb-12 flex items-center gap-3">
+             <h3 className="text-[12px] font-black uppercase tracking-widest text-main mb-6 md:mb-12 flex items-center gap-3">
                  <div className="p-2 clay-inset text-[#7C9B93]"><PieIcon size={18} /></div>
-                 {activeProject === 'Semua' ? 'Alokasi Dana Semua Project' : 'Penyaluran'}
+                 {activeProject === 'Semua' ? 'Alokasi Dana Semua Project' : activeProject === 'Haru' ? 'Ramadhan Ceria' : 'Penyaluran'}
              </h3>
-             <div className="h-[300px] w-full relative">
+             
+             {activeProject === 'Haru' ? (
+               <div className="h-[300px] w-full relative flex items-center justify-center">
+                 <div className="flex flex-col items-center gap-8">
+                   <GiftBoxAnimation />
+                   <div className="text-center">
+                     <p className="text-[12px] font-black uppercase tracking-widest text-muted mb-2">Hadiah Yang Siap Diserahkan Untuk Para Guru</p>
+                     <p className="text-[24px] font-black text-[#7C9B93]">Rp {currentData.summary.balance.toLocaleString('id-ID')}</p>
+                     <p className="text-[10px] font-black uppercase tracking-widest text-muted mt-3">Progress dana yang sudah terkumpul</p>
+                   </div>
+                 </div>
+               </div>
+             ) : (
+               <div className="h-[300px] w-full relative">
                 <ResponsiveContainer width="100%" height="100%">
                     <RePieChart>
                         <defs>
@@ -474,19 +488,6 @@ const App: React.FC = () => {
                           startAngle={90}
                           endAngle={-270}
                           stroke="none"
-                          onClick={(entry: any) => {
-                            if (activeProject === 'Semua') {
-                              const cx = entry?.cx ?? 150;
-                              const posX = entry?.tooltipPosition?.x ?? cx;
-                              const posY = entry?.tooltipPosition?.y ?? (entry?.cy ?? 150);
-                              setSelectedAllocation({
-                                name: entry?.name || '',
-                                x: posX,
-                                y: posY,
-                                side: posX >= cx ? 'right' : 'left'
-                              });
-                            }
-                          }}
                         >
                             {pieDisplayData.map((e: any, i: number) => (
                               <Cell
@@ -503,50 +504,42 @@ const App: React.FC = () => {
                         </Pie>
                     </RePieChart>
                 </ResponsiveContainer>
-                {activeProject === 'Semua' && selectedAllocation && (
-                  <div
-                    className="pointer-events-none absolute z-10"
-                    style={{
-                      left: `${selectedAllocation.x}px`,
-                      top: `${selectedAllocation.y}px`,
-                      transform: selectedAllocation.side === 'right'
-                        ? 'translate(14px, -50%)'
-                        : 'translate(calc(-100% - 14px), -50%)'
-                    }}
-                  >
-                    <div className="clay-inset rounded-[18px] px-4 py-2 text-left min-w-[150px]">
-                      <p className="text-[9px] font-black uppercase tracking-[0.1em] text-muted">Keterangan</p>
-                      <p className="text-[10px] font-black uppercase text-main mt-1">{selectedAllocation.name}</p>
-                      <p className="text-[10px] font-black text-[#7C9B93] mt-0.5">{allocationProjectsMap[selectedAllocation.name] || '-'}</p>
-                    </div>
-                  </div>
-                )}
              </div>
-             <div className="mt-8 space-y-4 w-full">
+             )}
+             
+             {activeProject !== 'Haru' && (
+             <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
                 {pieDisplayData.map((p: any, i: number) => (
-                    <div key={i} className="flex items-center justify-between p-4 clay-inset rounded-[24px]">
-                        <div className="flex items-center gap-3">
-                            <div className="w-4 h-4 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.18)]" style={{ background: normalizeChartColor(p.renderColor || p.color || COLORS.projects[i % COLORS.projects.length]) }} />
-                            <div className="flex flex-col">
-                              <span className="text-[11px] font-black uppercase text-main">{p.name}</span>
+                    <div key={i} className="clay-card p-5 md:p-6 flex flex-col gap-4 hover:shadow-md transition-shadow">
+                        <div className="flex items-start gap-3">
+                            <div className="w-4 h-4 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.18)] flex-shrink-0 mt-1" style={{ background: normalizeChartColor(p.renderColor || p.color || COLORS.projects[i % COLORS.projects.length]) }} />
+                            <div className="flex flex-col flex-1 gap-1">
+                              <span className="text-[12px] md:text-[13px] font-black uppercase text-main leading-tight">{p.name}</span>
                               {activeProject === 'Semua' && (
-                                <span className="text-[9px] font-black uppercase text-muted mt-0.5">
+                                <span className="text-[10px] font-black uppercase text-muted">
                                   {allocationProjectsMap[p.name] || '-'}
                                 </span>
                               )}
                             </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[14px] font-black text-main">{formatCompactCurrency(activeProject === 'Semua' ? p.value : p.nominal)}</span>
-                          <span className="badge-clay text-main text-[12px]">
-                            {activeProject === 'Semua'
-                              ? `${Math.round(((p.value || 0) / Math.max(pieTotal, 1)) * 100)}%`
-                              : `${p.value}%`}
-                          </span>
+                        <div className="flex items-end justify-between gap-3 pt-2 border-t border-[#7C9B93]/10">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-black uppercase text-muted mb-1">Nominal</span>
+                            <span className="text-[14px] md:text-[16px] font-black text-main">{formatCompactCurrency(activeProject === 'Semua' ? p.value : p.nominal)}</span>
+                          </div>
+                          <div className="flex flex-col items-end">
+                            <span className="text-[10px] font-black uppercase text-muted mb-1">Persentase</span>
+                            <span className="badge-clay text-main text-[13px] md:text-[14px] font-black">
+                              {activeProject === 'Semua'
+                                ? `${Math.round(((p.value || 0) / Math.max(pieTotal, 1)) * 100)}%`
+                                : `${p.value}%`}
+                            </span>
+                          </div>
                         </div>
                     </div>
                 ))}
              </div>
+             )}
         </div>
       </div>
 
