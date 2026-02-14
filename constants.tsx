@@ -15,7 +15,7 @@ export interface ProjectData {
 
 export const PROJECT_DATA: Record<string, ProjectData> = {
   'Resik': {
-    summary: { balance: 1310435, income: 6125355, expense: 4814920 },
+    summary: { balance: 1602035, income: 6708555, expense: 5106520 },
     transactions: [
       { id: 1, date: '18/10/24', description: 'Penjualan galon bekas', income: 20000, expense: null, balance: 20000 },
       { id: 2, date: '26/02/25', description: 'Penjualan ke pengepul 1', income: 96000, expense: null, balance: 116000 },
@@ -67,7 +67,9 @@ export const PROJECT_DATA: Record<string, ProjectData> = {
       { id: 48, date: '15/01/26', description: 'Penjualan ke pengepul (171 kg)', income: 398800, expense: null, balance: 1520534 },
       { id: 49, date: '21/01/26', description: 'Penjualan jlantah 1 ltr', income: 9000, expense: null, balance: 1529534 },
       { id: 50, date: '21/01/26', description: 'Penjualan galon bekas (4 unit)', income: 8000, expense: null, balance: 1537534 },
-      { id: 51, date: '21/01/26', description: 'Alokasi Tabungan Cinta Guru (Bendahara)', income: null, expense: 267900, balance: 1269634 }
+      { id: 51, date: '21/01/26', description: 'Alokasi Tabungan Cinta Guru (Bendahara)', income: null, expense: 267900, balance: 1269634 },
+      { id: 52, date: '13/02/26', description: 'Perolehan Resik', income: 583200, expense: null, balance: 1852834 },
+      { id: 53, date: '13/02/26', description: 'Alokasi Tabungan Cinta Guru (50% Perolehan)', income: null, expense: 291600, balance: 1602035 }
     ],
     monthlyFlow: [
       { month: 'P1-P2', income: 1246915, expense: 622500 },
@@ -76,7 +78,8 @@ export const PROJECT_DATA: Record<string, ProjectData> = {
       { month: 'P5', income: 997700, expense: 638850 },
       { month: 'P6', income: 1435000, expense: 1435000 },
       { month: 'P7', income: 518200, expense: 259100 },
-      { month: 'P8', income: 535800, expense: 267900 }
+      { month: 'P8', income: 535800, expense: 267900 },
+      { month: 'P9', income: 583200, expense: 291600 }
     ],
     incomeCategories: [
       { name: 'Pengepul', value: 75, color: '#7C9B93' },
@@ -120,12 +123,18 @@ export const PROJECT_DATA: Record<string, ProjectData> = {
   'Hadeyya': {
     summary: { balance: 7070600, income: 8785600, expense: 1715000 },
     transactions: [
-      { id: 1, date: 'Jan 26', description: 'Transfer Irma', income: 15000, expense: null, balance: 5495100 },
-      { id: 2, date: 'Jan 26', description: 'QRIS Mb Ifa', income: 105000, expense: null, balance: 5600100 },
-      { id: 3, date: 'Jan 26', description: 'Transfer Anniva', income: 450500, expense: null, balance: 6050600 },
-      { id: 4, date: 'Jan 26', description: 'Transfer Andi Putra', income: 909000, expense: null, balance: 7070600 },
-      { id: 5, date: '2025', description: 'Pemasukan 2025', income: 7195100, expense: null, balance: 7195100 },
-      { id: 6, date: '2025', description: 'Penyaluran Poncokusumo', income: null, expense: 1715000, balance: 5480100 }
+      { id: 1, date: '2025', description: 'Pemasukan 2025', income: 7195100, expense: null, balance: 7195100 },
+      { id: 2, date: '2025', description: 'Penyaluran Poncokusumo', income: null, expense: 1715000, balance: 5480100 },
+      { id: 3, date: '10/01/26', description: 'TF Irma', income: 15000, expense: null, balance: 5495100 },
+      { id: 4, date: '18/01/26', description: 'QRIS Mb Ifa', income: 105000, expense: null, balance: 5600100 },
+      { id: 5, date: '21/01/26', description: 'TF Anniva', income: 20000, expense: null, balance: 5620100 },
+      { id: 6, date: '21/01/26', description: 'TF Anniva', income: 385500, expense: null, balance: 6005600 },
+      { id: 7, date: '28/01/26', description: 'QRIS Mb Epi', income: 51000, expense: null, balance: 6056600 },
+      { id: 8, date: '28/01/26', description: 'QRIS Mb Dyah', income: 30000, expense: null, balance: 6086600 },
+      { id: 9, date: '28/01/26', description: 'QRIS', income: 20000, expense: null, balance: 6106600 },
+      { id: 10, date: '29/01/26', description: 'QRIS', income: 10000, expense: null, balance: 6116600 },
+      { id: 11, date: '30/01/26', description: 'TF Anniva', income: 45000, expense: null, balance: 6161600 },
+      { id: 12, date: '30/01/26', description: 'TF Andi Putra', income: 909000, expense: null, balance: 7070600 }
     ],
     monthlyFlow: [
       { month: '2025', income: 7195100, expense: 1715000 },
@@ -141,16 +150,25 @@ export const PROJECT_DATA: Record<string, ProjectData> = {
     ]
   },
   'Haru': {
-    summary: { balance: 11617500, income: 11617500, expense: 0 },
+    summary: { balance: 12687500, income: 12687500, expense: 0 },
     transactions: [
-      { id: 1, date: 'Des 25', description: 'Bazar HARU', income: 2008500, expense: null, balance: 2008500 },
-      { id: 2, date: 'Jan 26', description: 'Perolehan HARU', income: 8174000, expense: null, balance: 10182500 },
-      { id: 3, date: 'Feb 26', description: 'Perolehan HARU', income: 1435000, expense: null, balance: 11617500 }
+      { id: 1, date: '12/12/25', description: 'Pemasukan HARU', income: 1107000, expense: null, balance: 1107000 },
+      { id: 2, date: '13/12/25', description: 'Pemasukan HARU', income: 901500, expense: null, balance: 2008500 },
+      { id: 3, date: '19/12/25', description: 'Pemasukan HARU', income: 1170000, expense: null, balance: 3178500 },
+      { id: 4, date: '26/12/25', description: 'Pemasukan HARU', income: 1000000, expense: null, balance: 4178500 },
+      { id: 5, date: '02/01/26', description: 'Pemasukan HARU', income: 1030000, expense: null, balance: 5208500 },
+      { id: 6, date: '09/01/26', description: 'Pemasukan HARU', income: 1010000, expense: null, balance: 6218500 },
+      { id: 7, date: '09/01/26', description: 'Pemasukan HARU', income: 1230000, expense: null, balance: 7448500 },
+      { id: 8, date: '16/01/26', description: 'Pemasukan HARU', income: 839000, expense: null, balance: 8287500 },
+      { id: 9, date: '23/01/26', description: 'Pemasukan HARU', income: 892000, expense: null, balance: 9179500 },
+      { id: 10, date: '30/01/26', description: 'Pemasukan HARU', income: 1003000, expense: null, balance: 10182500 },
+      { id: 11, date: '06/02/26', description: 'Pemasukan HARU', income: 1435000, expense: null, balance: 11617500 },
+      { id: 12, date: '13/02/26', description: 'Pemasukan HARU', income: 1070000, expense: null, balance: 12687500 }
     ],
     monthlyFlow: [
-      { month: 'Des 25', income: 2008500, expense: 0 },
-      { month: 'Jan 26', income: 8174000, expense: 0 },
-      { month: 'Feb 26', income: 1435000, expense: 0 }
+      { month: 'Des 25', income: 4178500, expense: 0 },
+      { month: 'Jan 26', income: 6004000, expense: 0 },
+      { month: 'Feb 26', income: 2505000, expense: 0 }
     ],
     incomeCategories: [
       { name: 'Bazar', value: 20, color: '#638079' },
