@@ -12,6 +12,8 @@
   <style>
     :root {
       --bg-color: #E8F1F2;
+      --grid-base: #E8F1F2;
+      --project-menu-color: #7C9B93;
       --card-bg: #F0F7F8;
       --clay-shadow-out-dark: #C9D6D9;
       --clay-shadow-out-light: #FFFFFF;
@@ -27,6 +29,7 @@
 
     body.dark-mode {
       --bg-color: #1A1A1A;
+      --grid-base: #1A1A1A;
       --card-bg: #222222;
       --clay-shadow-out-dark: #0F0F0F;
       --clay-shadow-out-light: #2D2D2D;
@@ -53,7 +56,7 @@
       inset: 0;
       pointer-events: none;
       z-index: 0;
-      background-color: #E8F1F2;
+      background-color: var(--grid-base);
       background-image:
         linear-gradient(rgba(88, 98, 102, 0.22) 1.25px, transparent 1.25px),
         linear-gradient(90deg, rgba(88, 98, 102, 0.22) 1.25px, transparent 1.25px),
@@ -241,7 +244,7 @@
     /* Mobile bottom menu */
     .mobile-nav-dock {
       border-radius: 34px;
-      background: #7C9B93;
+      background: var(--project-menu-color);
       box-shadow:
         10px 10px 22px var(--clay-shadow-out-dark),
         -8px -8px 16px var(--clay-shadow-out-light),
@@ -312,7 +315,7 @@
     }
 
     body.dark-mode .mobile-nav-dock {
-      background: #7C9B93;
+      background: var(--project-menu-color);
       box-shadow:
         10px 10px 22px var(--clay-shadow-out-dark),
         -8px -8px 16px var(--clay-shadow-out-light),
@@ -352,6 +355,160 @@
     @keyframes iconFloat {
       0%, 100% { transform: translateY(0); }
       50% { transform: translateY(-2px); }
+    }
+
+    /* Contribution illustration */
+    .impact-orb {
+      position: absolute;
+      border-radius: 9999px;
+      filter: blur(0.2px);
+    }
+
+    .impact-orb-a {
+      width: 54px;
+      height: 54px;
+      top: 8px;
+      left: 14px;
+      background: radial-gradient(circle at 30% 30%, rgba(124, 155, 147, 0.45), rgba(124, 155, 147, 0.15));
+      animation: impactFloatA 4.6s ease-in-out infinite;
+    }
+
+    .impact-orb-b {
+      width: 72px;
+      height: 72px;
+      right: 8px;
+      bottom: 10px;
+      background: radial-gradient(circle at 40% 35%, rgba(166, 139, 139, 0.34), rgba(166, 139, 139, 0.12));
+      animation: impactFloatB 5.2s ease-in-out infinite;
+    }
+
+    .impact-core {
+      position: absolute;
+      inset: 0;
+      margin: auto;
+      width: 68px;
+      height: 68px;
+      border-radius: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(145deg, rgba(240, 247, 248, 0.92), rgba(232, 241, 242, 0.88));
+      box-shadow:
+        7px 7px 14px var(--clay-shadow-out-dark),
+        -7px -7px 14px var(--clay-shadow-out-light),
+        inset 1px 1px 0 rgba(255, 255, 255, 0.65);
+      animation: impactPulse 3s ease-in-out infinite;
+    }
+
+    .impact-ring {
+      fill: none;
+      stroke: rgba(124, 155, 147, 0.5);
+      stroke-width: 4;
+      stroke-dasharray: 16 12;
+      transform-origin: 50% 50%;
+      animation: impactRotate 10s linear infinite, impactStroke 3.2s ease-in-out infinite;
+    }
+
+    body.dark-mode .impact-core {
+      background: linear-gradient(145deg, rgba(44, 44, 44, 0.95), rgba(32, 32, 32, 0.92));
+      box-shadow:
+        8px 8px 16px rgba(0, 0, 0, 0.42),
+        -4px -4px 10px rgba(255, 255, 255, 0.03),
+        inset 1px 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    body.dark-mode .impact-ring {
+      stroke: rgba(142, 177, 167, 0.55);
+    }
+
+    @keyframes impactFloatA {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(6px, -5px); }
+    }
+
+    @keyframes impactFloatB {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(-7px, 6px); }
+    }
+
+    @keyframes impactPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.06); }
+    }
+
+    @keyframes impactRotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes impactStroke {
+      0%, 100% { stroke-opacity: 0.55; }
+      50% { stroke-opacity: 0.95; }
+    }
+
+    /* Contribution card icon motion */
+    .contrib-illust {
+      animation: contribFloat 4.4s ease-in-out infinite;
+    }
+
+    .contrib-bg {
+      animation: contribPulseBg 3.4s ease-in-out infinite;
+    }
+
+    .contrib-dot {
+      animation: contribDot 3.1s ease-in-out infinite;
+    }
+
+    .contrib-core {
+      animation: contribCore 3.6s ease-in-out infinite;
+    }
+
+    .contrib-icon {
+      animation: contribIconBreathe 2.8s ease-in-out infinite;
+      transform-origin: 50% 50%;
+    }
+
+    .contrib-utilized .contrib-icon {
+      animation: contribIconSpin 5.5s linear infinite;
+    }
+
+    .contrib-sorted .contrib-icon {
+      animation: contribIconNudge 2.6s ease-in-out infinite;
+    }
+
+    @keyframes contribFloat {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-3px); }
+    }
+
+    @keyframes contribPulseBg {
+      0%, 100% { transform: scale(1); opacity: 0.2; }
+      50% { transform: scale(1.06); opacity: 0.28; }
+    }
+
+    @keyframes contribDot {
+      0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.42; }
+      50% { transform: translate(-2px, 2px) scale(1.12); opacity: 0.55; }
+    }
+
+    @keyframes contribCore {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    @keyframes contribIconBreathe {
+      0%, 100% { transform: scale(1); opacity: 0.96; }
+      50% { transform: scale(1.08); opacity: 1; }
+    }
+
+    @keyframes contribIconSpin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes contribIconNudge {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-1.5px); }
     }
 
   </style>

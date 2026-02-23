@@ -2,6 +2,22 @@
 import { Transaction, MonthlyFlow, CategoryData } from './types';
 
 export interface ProjectData {
+  profile: {
+    vision: string;
+    missions: string[];
+    agenda: string[];
+    contributions: Array<{
+      title: string;
+      value: string;
+      description: string;
+      illustration: 'reduction' | 'sorted' | 'utilized';
+    }>;
+    team: Array<{
+      name: string;
+      role: string;
+      photo: string;
+    }>;
+  };
   transactions: Transaction[];
   monthlyFlow: MonthlyFlow[];
   incomeCategories: CategoryData[];
@@ -15,6 +31,47 @@ export interface ProjectData {
 
 export const PROJECT_DATA: Record<string, ProjectData> = {
   'Resik': {
+    profile: {
+      vision: 'Menjadikan pengelolaan barang bekas sebagai gerakan berkelanjutan yang amanah, berdampak, dan bernilai bagi pendidikan.',
+      missions: [
+        'Mengoptimalkan pengumpulan dan penjualan barang bekas secara rutin.',
+        'Menyalurkan hasil pengelolaan untuk program Cinta Guru dan kebutuhan umat.',
+        'Membangun budaya peduli lingkungan di kalangan wali murid dan masyarakat.'
+      ],
+      agenda: [
+        "Kumpul tiap Jum'at kedua dan keempat setiap bulan untuk sortir sampah.",
+        'Drop point limbah rumah tangga setiap hari Sabtu pekan pertama.',
+        'Rekap dan penjualan ke pengepul pada akhir bulan.'
+      ],
+      contributions: [
+        {
+          title: 'Pengurangan Limbah',
+          value: '40 kg',
+          description: 'Limbah campuran berhasil dialihkan dari penumpukan di TPA.',
+          illustration: 'reduction'
+        },
+        {
+          title: 'Sampah Tersortir',
+          value: '33 kg',
+          description: 'Sampah dipilah sesuai jenis untuk memudahkan proses lanjut.',
+          illustration: 'sorted'
+        },
+        {
+          title: 'Sampah yang Dimanfaatkan',
+          value: '29 kg',
+          description: 'Sampah bernilai berhasil dimanfaatkan kembali secara rutin.',
+          illustration: 'utilized'
+        }
+      ],
+      team: [
+        { name: 'Kak Idhka', role: 'CEO', photo: '' },
+        { name: 'Kak Yeni', role: 'Bendahara', photo: '' },
+        { name: 'Kak Ratna', role: 'Tim Resik', photo: '' },
+        { name: 'Kak Wulan', role: 'Tim Resik', photo: '' },
+        { name: 'Kak Diyah', role: 'Tim Resik', photo: '' },
+        { name: 'Kak Rini', role: 'Bu Nyai', photo: '' }
+      ]
+    },
     summary: { balance: 1602035, income: 6708555, expense: 5106520 },
     transactions: [
       { id: 1, date: '18/10/24', description: 'Penjualan galon bekas', income: 20000, expense: null, balance: 20000 },
@@ -93,6 +150,44 @@ export const PROJECT_DATA: Record<string, ProjectData> = {
     ]
   },
   'Siyar': {
+    profile: {
+      vision: 'Mewujudkan dukungan pembelajaran dan dakwah yang terencana, tepat sasaran, dan berorientasi manfaat jangka panjang.',
+      missions: [
+        'Menghimpun dana program Siyar secara bertahap dan transparan.',
+        'Menyalurkan dana sesuai prioritas kebutuhan program Bilistiwa.',
+        'Menjaga pelaporan keuangan agar mudah dipantau oleh jamaah.'
+      ],
+      agenda: [
+        'Koordinasi tim program setiap Senin pekan pertama.',
+        'Publikasi progress donasi setiap pertengahan bulan.',
+        'Evaluasi penyaluran dan kebutuhan program pada akhir bulan.'
+      ],
+      contributions: [
+        {
+          title: 'Pengurangan Limbah',
+          value: '18 kg',
+          description: 'Limbah kegiatan program berhasil dikurangi dari titik kumpul.',
+          illustration: 'reduction'
+        },
+        {
+          title: 'Sampah Tersortir',
+          value: '14 kg',
+          description: 'Sampah dipisahkan untuk memudahkan distribusi pemanfaatan.',
+          illustration: 'sorted'
+        },
+        {
+          title: 'Sampah yang Dimanfaatkan',
+          value: '10 kg',
+          description: 'Material yang masih bernilai berhasil dimanfaatkan kembali.',
+          illustration: 'utilized'
+        }
+      ],
+      team: [
+        { name: 'Ummu Sarah', role: 'PIC Program', photo: 'https://i.pravatar.cc/240?img=32' },
+        { name: 'Ummu Alya', role: 'Admin Donasi', photo: 'https://i.pravatar.cc/240?img=31' },
+        { name: 'Ummu Laila', role: 'Keuangan', photo: 'https://i.pravatar.cc/240?img=33' }
+      ]
+    },
     summary: { balance: 0, income: 30000000, expense: 30000000 },
     transactions: [
       { id: 1, date: '14/01/24', description: 'Pemasukan Tahap 1', income: 6250000, expense: null, balance: 6250000 },
@@ -121,6 +216,44 @@ export const PROJECT_DATA: Record<string, ProjectData> = {
     ]
   },
   'Hadeyya': {
+    profile: {
+      vision: 'Menjadi program hadiah dan dukungan situasional yang responsif untuk kebutuhan pendidikan dan kemaslahatan.',
+      missions: [
+        'Mengelola dana Hadeyya dengan akuntabilitas yang konsisten.',
+        'Memprioritaskan penyaluran pada kebutuhan mendesak dan berdampak.',
+        'Memperluas partisipasi donatur melalui kanal donasi yang mudah.'
+      ],
+      agenda: [
+        'Pendataan kebutuhan situasional setiap pekan kedua.',
+        'Verifikasi pengajuan bantuan setiap hari Rabu.',
+        'Penyaluran prioritas berdasarkan urgensi di pekan keempat.'
+      ],
+      contributions: [
+        {
+          title: 'Pengurangan Limbah',
+          value: '22 kg',
+          description: 'Volume limbah berhasil ditekan melalui pengelolaan terjadwal.',
+          illustration: 'reduction'
+        },
+        {
+          title: 'Sampah Tersortir',
+          value: '17 kg',
+          description: 'Pemilahan sampah dilakukan untuk meningkatkan efektivitas proses.',
+          illustration: 'sorted'
+        },
+        {
+          title: 'Sampah yang Dimanfaatkan',
+          value: '12 kg',
+          description: 'Sampah layak pakai dimanfaatkan untuk kebutuhan produktif.',
+          illustration: 'utilized'
+        }
+      ],
+      team: [
+        { name: 'Ummu Hana', role: 'Koordinator Hadeyya', photo: 'https://i.pravatar.cc/240?img=12' },
+        { name: 'Ummu Zahra', role: 'Humas Donatur', photo: 'https://i.pravatar.cc/240?img=11' },
+        { name: 'Ummu Maryam', role: 'Verifikator Penyaluran', photo: 'https://i.pravatar.cc/240?img=14' }
+      ]
+    },
     summary: { balance: 7070600, income: 8785600, expense: 1715000 },
     transactions: [
       { id: 1, date: '2025', description: 'Pemasukan 2025', income: 7195100, expense: null, balance: 7195100 },
@@ -150,6 +283,44 @@ export const PROJECT_DATA: Record<string, ProjectData> = {
     ]
   },
   'Haru': {
+    profile: {
+      vision: 'Menghadirkan kebahagiaan Ramadhan untuk para guru melalui hadiah yang bermakna dan tepat waktu.',
+      missions: [
+        'Menghimpun dana HARU secara mingguan dengan target yang terukur.',
+        'Menjaga semangat kolaborasi wali murid dalam gerakan hadiah guru.',
+        'Memastikan realisasi hadiah sesuai amanah dan kebutuhan penerima.'
+      ],
+      agenda: [
+        'Kampanye penggalangan dana setiap Jumat.',
+        'Update progress hadiah guru setiap Ahad malam.',
+        'Finalisasi paket hadiah pada pekan terakhir sebelum penyaluran.'
+      ],
+      contributions: [
+        {
+          title: 'Pengurangan Limbah',
+          value: '26 kg',
+          description: 'Limbah event berhasil ditekan lewat skema pengelolaan bersama.',
+          illustration: 'reduction'
+        },
+        {
+          title: 'Sampah Tersortir',
+          value: '20 kg',
+          description: 'Sampah terpilah untuk memudahkan distribusi dan penanganan.',
+          illustration: 'sorted'
+        },
+        {
+          title: 'Sampah yang Dimanfaatkan',
+          value: '15 kg',
+          description: 'Material bermanfaat disalurkan kembali untuk penggunaan layak.',
+          illustration: 'utilized'
+        }
+      ],
+      team: [
+        { name: 'Ummu Rania', role: 'Lead Campaign', photo: 'https://i.pravatar.cc/240?img=22' },
+        { name: 'Ummu Fathia', role: 'Konten & Publikasi', photo: 'https://i.pravatar.cc/240?img=24' },
+        { name: 'Ummu Salma', role: 'Penyaluran Hadiah', photo: 'https://i.pravatar.cc/240?img=26' }
+      ]
+    },
     summary: { balance: 12687500, income: 12687500, expense: 0 },
     transactions: [
       { id: 1, date: '12/12/25', description: 'Pemasukan HARU', income: 1107000, expense: null, balance: 1107000 },
