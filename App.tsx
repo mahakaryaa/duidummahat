@@ -18,6 +18,7 @@ import {
   Moon,
   BarChart3,
   Heart,
+  Shield,
   ShieldCheck,
   ChevronDown,
   ChevronUp,
@@ -33,10 +34,22 @@ import {
   Plus,
   X,
   FileSpreadsheet,
-  FileText
+  FileText,
+  Lock,
+  LogOut,
+  Layout,
+  Settings,
+  Home,
+  ChevronLeft,
+  ChevronRight,
+  Info,
+  AlertCircle,
+  AlertTriangle,
+  KeyRound
 } from 'lucide-react';
 import { PROJECT_DATA, ProjectData } from './constants';
 import GiftBoxAnimation from './GiftBoxAnimation';
+import { supabase } from './supabase';
 
 declare const gsap: any;
 const hasGsap = () => typeof gsap !== 'undefined' && typeof gsap?.to === 'function' && typeof gsap?.fromTo === 'function';
@@ -82,7 +95,7 @@ const cloneProfile = (profile: ProjectProfile): ProjectProfile => JSON.parse(JSO
 const LEGACY_RESIK_TEAM_NAMES = new Set(['Ummu Nabila', 'Ummu Aisha', 'Ummu Safa', 'Kak Ratna Wulan', 'Kak Rini', 'Bu Nyai']);
 
 type ManualReportRow = {
-  id: number;
+  id: string | number;
   date: string;
   type: 'Masuk' | 'Keluar' | 'Tabungan';
   description: string;
@@ -101,7 +114,7 @@ type ManualReportDraft = {
 };
 
 type VolunteerApply = {
-  id: number;
+  id: string | number;
   project: ProjectKey;
   name: string;
   skill: string;
@@ -109,7 +122,14 @@ type VolunteerApply = {
   createdAt: string;
 };
 
-const getDefaultProfiles = (): Record<ProjectKey, ProjectProfile> => ({
+const getDefaultProfiles = (): Record<ProjectType, ProjectProfile> => ({
+  Semua: {
+    vision: 'Setiap data dan angka yang kami tampilkan di halaman sederhana ini disajikan secara terbuka sebagai bentuk penjagaan amanah. Transparansi ini kami hadirkan sebagai wujud tanggung jawab atas setiap titipan yang dikelola, sebelum semuanya kelak dipertanggungjawabkan di hadapan Allah ta\'ala.',
+    missions: ['"Jazakumullahu khairan atas kepercayaan dan infak yang telah dititipkan. Semoga setiap rupiah menjadi amal jariyah yang terus mengalir pahalanya, serta menjadi bagian dari keberkahan bagi generasi yang sedang kita jaga bersama."'],
+    agenda: [],
+    contributions: [],
+    team: []
+  },
   Resik: cloneProfile(PROJECT_DATA.Resik.profile),
   Hadeyya: cloneProfile(PROJECT_DATA.Hadeyya.profile),
   Siyar: cloneProfile(PROJECT_DATA.Siyar.profile),
@@ -273,7 +293,7 @@ const CustomTooltip = ({ active, payload, isDark }: any) => {
   return null;
 };
 
-const WelcomeSection = () => {
+const WelcomeSection = ({ description, quote }: { description: string; quote: string }) => {
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="clay-card overflow-hidden p-8 md:p-12 relative fade-in-section">
@@ -292,11 +312,11 @@ const WelcomeSection = () => {
       
       <div className={`text-[15px] md:text-[17px] font-medium leading-relaxed text-main transition-all duration-700 ease-in-out ${!expanded ? 'max-md:max-h-[100px] overflow-hidden' : ''}`}>
         <p className="mb-6 opacity-90">
-          Setiap data dan angka yang kami tampilkan di halaman sederhana ini disajikan secara terbuka sebagai bentuk penjagaan amanah. Transparansi ini kami hadirkan sebagai wujud tanggung jawab atas setiap titipan yang dikelola, sebelum semuanya kelak dipertanggungjawabkan di hadapan Allah ta'ala.
+          {description}
         </p>
         <div className="p-6 clay-inset bg-[#7C9B93]/5 rounded-3xl">
           <p className="italic text-muted font-medium">
-            "Jazakumullahu khairan atas kepercayaan dan infak yang telah dititipkan. Semoga setiap rupiah menjadi amal jariyah yang terus mengalir pahalanya, serta menjadi bagian dari keberkahan bagi generasi yang sedang kita jaga bersama."
+            {quote}
           </p>
         </div>
       </div>
@@ -791,16 +811,19 @@ const AdminPanel = ({
       <div className="clay-card p-6 md:p-8 space-y-5">
         <div className="flex flex-col md:flex-row md:items-center gap-3">
           <label className="text-[11px] font-black uppercase tracking-widest text-muted">Project</label>
-          <select
-            value={editingProject}
-            onChange={(e) => setEditingProject(e.target.value as ProjectKey)}
-            disabled={session.project !== 'all'}
-            className="rounded-2xl px-4 py-2 text-[12px] font-black uppercase tracking-widest text-main bg-transparent border border-[#7C9B93]/25 outline-none"
-          >
-            {PROJECT_KEYS.map((k) => (
-              <option key={k} value={k}>{k}</option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              value={editingProject}
+              onChange={(e) => setEditingProject(e.target.value as ProjectKey)}
+              disabled={session.project !== 'all'}
+              className="appearance-none rounded-2xl px-4 pr-10 py-2 text-[12px] font-black uppercase tracking-widest text-main bg-transparent border border-[#7C9B93]/25 outline-none cursor-pointer"
+            >
+              {PROJECT_KEYS.map((k) => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#7C9B93] pointer-events-none" />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -983,10 +1006,15 @@ const App: React.FC = () => {
   const [manualDraft, setManualDraft] = useState<ManualReportDraft>(createEmptyManualDraft());
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [txModalMode, setTxModalMode] = useState<'create' | 'edit'>('create');
-  const [editingTxId, setEditingTxId] = useState<number | null>(null);
+  const [editingTxId, setEditingTxId] = useState<string | number | null>(null);
   const [txValidationError, setTxValidationError] = useState('');
   const [txPage, setTxPage] = useState(1);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [user, setUser] = useState<any>(null);
+  const [adminRoles, setAdminRoles] = useState<Array<{ email: string, project: string }>>([]);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminProject, setNewAdminProject] = useState<ProjectKey | 'all'>('Resik');
   const [volunteerApplyByProject, setVolunteerApplyByProject] = useState<Record<ProjectKey, VolunteerApply[]>>(() => {
     const defaults = getDefaultVolunteerApply();
     try {
@@ -1001,13 +1029,176 @@ const App: React.FC = () => {
       return defaults;
     }
   });
-  const [adminTab, setAdminTab] = useState<'profil' | 'keuangan' | 'kontribusi' | 'setting'>('profil');
-  const [adminTargetProject, setAdminTargetProject] = useState<ProjectKey>('Resik');
-  const [profileDraft, setProfileDraft] = useState<{ vision: string; missionsText: string; agendaText: string; teamText: string }>({
+
+  // Supabase Data Fetching
+  useEffect(() => {
+    async function fetchSupabaseData() {
+      try {
+        const { data: profiles } = await supabase.from('project_profiles').select('*');
+        if (profiles && profiles.length > 0) {
+          setEditableProfiles(prev => {
+            const next = { ...prev };
+            profiles.forEach(p => {
+              if (PROJECT_KEYS.includes(p.project_key as ProjectKey)) {
+                next[p.project_key as ProjectKey] = {
+                  vision: p.vision || '',
+                  missions: p.missions || [],
+                  agenda: p.agenda || [],
+                  team: p.team || [],
+                  contributions: p.contributions || []
+                };
+              }
+            });
+            return next;
+          });
+        }
+
+        const { data: tx } = await supabase.from('transactions').select('*');
+        if (tx && tx.length > 0) {
+          setManualReportsByProject(prev => {
+            const next = { ...prev };
+            PROJECT_KEYS.forEach(k => next[k] = []);
+            tx.forEach(t => {
+              if (next[t.project as ProjectType]) {
+                next[t.project as ProjectType].push({
+                  id: t.id,
+                  date: t.date,
+                  type: t.type,
+                  description: t.description,
+                  amount: t.amount,
+                  category: t.category,
+                  note: t.note
+                });
+              }
+            });
+            return next;
+          });
+        }
+
+        const { data: vols } = await supabase.from('volunteers').select('*');
+        if (vols && vols.length > 0) {
+          setVolunteerApplyByProject(prev => {
+            const next = { ...prev };
+            PROJECT_KEYS.forEach(k => next[k as ProjectKey] = []);
+            vols.forEach(v => {
+              if (next[v.project as ProjectKey]) {
+                next[v.project as ProjectKey].push({
+                  id: v.id,
+                  project: v.project as ProjectKey,
+                  name: v.name,
+                  skill: v.skill,
+                  commitment: v.commitment,
+                  createdAt: v.created_at
+                });
+              }
+            });
+            return next;
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch from supabase', err);
+      }
+    }
+    fetchSupabaseData();
+  }, []);
+
+  // Auth & Roles Sync
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleUserSession(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      handleUserSession(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleUserSession = async (user: any) => {
+    setUser(user);
+    if (user) {
+      const { data: roleData, error } = await supabase
+        .from('admin_roles')
+        .select('*')
+        .eq('email', user.email)
+        .single();
+
+      if (error || !roleData) {
+        await supabase.auth.signOut();
+        setAdminLoginError('Email ini tidak terdaftar sebagai admin.');
+        setAdminSession(null);
+      } else {
+        setAdminSession({ username: user.user_metadata.full_name || user.email, project: roleData.project });
+        setAdminTargetProject(roleData.project === 'all' ? 'Resik' : roleData.project);
+        if (roleData.project === 'all') {
+          fetchAdminRoles();
+        }
+      }
+    } else {
+      setAdminSession(null);
+    }
+    setIsAuthLoading(false);
+  };
+
+  const fetchAdminRoles = async () => {
+    const { data } = await supabase.from('admin_roles').select('*');
+    if (data) setAdminRoles(data);
+  };
+
+  const addAdminRole = async () => {
+    if (!newAdminEmail.trim()) return;
+    const { error } = await supabase.from('admin_roles').insert({
+      email: newAdminEmail.trim().toLowerCase(),
+      project: newAdminProject
+    });
+    if (!error) {
+      showToast('Admin berhasil ditambahkan');
+      setNewAdminEmail('');
+      fetchAdminRoles();
+    } else {
+      showToast('Gagal menambah admin', 'error');
+    }
+  };
+
+  const deleteAdminRole = async (email: string) => {
+    if (email === user?.email) {
+      showToast('Tidak bisa menghapus diri sendiri', 'error');
+      return;
+    }
+    if (!window.confirm(`Hapus akses untuk ${email}?`)) return;
+    const { error } = await supabase.from('admin_roles').delete().eq('email', email);
+    if (!error) {
+      showToast('Akses dihapus');
+      fetchAdminRoles();
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setAdminLoginError('');
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin + '/admin'
+      }
+    });
+    if (error) setAdminLoginError(error.message);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setAdminSession(null);
+    setUser(null);
+    setViewMode('dashboard');
+  };
+
+  const [adminTab, setAdminTab] = useState<'profil' | 'keuangan' | 'kontribusi' | 'admin_management'>('profil');
+  const [adminTargetProject, setAdminTargetProject] = useState<ProjectType>('Resik');
+  const [profileDraft, setProfileDraft] = useState<{ vision: string; missions: string[]; agenda: string[]; team: Array<{ name: string; role: string }> }>({
     vision: '',
-    missionsText: '',
-    agendaText: '',
-    teamText: ''
+    missions: [],
+    agenda: [],
+    team: []
   });
   const [contributionDraft, setContributionDraft] = useState<ProjectProfile['contributions']>([]);
   const activeMenuColor = PROJECT_MENU_THEME[activeProject];
@@ -1087,18 +1278,68 @@ const App: React.FC = () => {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
+  const dynamicProjectData = useMemo(() => {
+    const data: Record<string, any> = {};
+    
+    PROJECT_KEYS.forEach(key => {
+      const manualRows = manualReportsByProject[key] || [];
+      const income = manualRows.reduce((acc, r) => acc + (r.type === 'Masuk' ? r.amount : 0), 0);
+      const expense = manualRows.reduce((acc, r) => acc + (r.type === 'Keluar' ? r.amount : 0), 0);
+      const savings = manualRows.reduce((acc, r) => acc + (r.type === 'Tabungan' ? r.amount : 0), 0);
+      const balance = income - expense - savings;
+
+      const transactions = manualRows.map(r => ({
+        id: r.id,
+        date: r.date.split('-').reverse().join('/'),
+        description: r.description,
+        income: r.type === 'Masuk' ? r.amount : null,
+        expense: (r.type === 'Keluar' || r.type === 'Tabungan') ? r.amount : null,
+        category: r.category || 'Tanpa Kategori',
+        balance: 0 
+      })).sort((a, b) => {
+        const da = new Date(a.date.split('/').reverse().join('-')).getTime();
+        const db = new Date(b.date.split('/').reverse().join('-')).getTime();
+        return db - da;
+      });
+
+      const monthlyMap: Record<string, { income: number, expense: number }> = {};
+      manualRows.forEach(r => {
+        const m = r.date.slice(0, 7); 
+        if (!monthlyMap[m]) monthlyMap[m] = { income: 0, expense: 0 };
+        if (r.type === 'Masuk') monthlyMap[m].income += r.amount;
+        else if (r.type === 'Keluar') monthlyMap[m].expense += r.amount;
+      });
+
+      const monthlyFlow = Object.entries(monthlyMap).map(([m, val]) => ({
+        month: m,
+        income: val.income,
+        expense: val.expense
+      })).sort((a, b) => a.month.localeCompare(b.month));
+
+      data[key] = {
+        ...PROJECT_DATA[key],
+        profile: editableProfiles[key],
+        summary: { balance, income, expense },
+        transactions: transactions.length > 0 ? transactions : PROJECT_DATA[key].transactions,
+        monthlyFlow: monthlyFlow.length > 0 ? monthlyFlow : PROJECT_DATA[key].monthlyFlow
+      };
+    });
+
+    return data;
+  }, [manualReportsByProject, editableProfiles]);
+
   const aggregatedData = useMemo(() => {
-    const allProjects = ['Resik', 'Siyar', 'Hadeyya', 'Haru'];
+    const allProjects = PROJECT_KEYS;
     let totalBalance = 0, totalIncome = 0, totalExpense = 0;
     let allTransactions: any[] = [];
     const projectBalanceContributions: any[] = [];
 
     allProjects.forEach((key, idx) => {
-      const p = PROJECT_DATA[key];
+      const p = dynamicProjectData[key];
       totalBalance += p.summary.balance;
       totalIncome += p.summary.income;
       totalExpense += p.summary.expense;
-      allTransactions = [...allTransactions, ...p.transactions.map(t => ({ ...t, project: key }))];
+      allTransactions = [...allTransactions, ...p.transactions.map((t: any) => ({ ...t, project: key }))];
       
       projectBalanceContributions.push({
         name: key,
@@ -1113,20 +1354,31 @@ const App: React.FC = () => {
       return dateB - dateA;
     });
 
+    const masterMonthly: Record<string, { income: number, expense: number }> = {};
+    allProjects.forEach(key => {
+      dynamicProjectData[key].monthlyFlow.forEach((f: any) => {
+        if (!masterMonthly[f.month]) masterMonthly[f.month] = { income: 0, expense: 0 };
+        masterMonthly[f.month].income += f.income;
+        masterMonthly[f.month].expense += f.expense;
+      });
+    });
+
+    const combinedMonthlyFlow = Object.entries(masterMonthly).map(([m, val]) => ({
+      month: m,
+      income: val.income,
+      expense: val.expense
+    })).sort((a, b) => a.month.localeCompare(b.month));
+
     return {
       summary: { balance: totalBalance, income: totalIncome, expense: totalExpense },
       transactions: allTransactions,
       projectBalanceContributions,
-      monthlyFlow: PROJECT_DATA['Resik'].monthlyFlow.map((f, i) => ({
-        month: f.month,
-        income: allProjects.reduce((acc, k) => acc + (PROJECT_DATA[k].monthlyFlow[i]?.income || 0), 0),
-        expense: allProjects.reduce((acc, k) => acc + (PROJECT_DATA[k].monthlyFlow[i]?.expense || 0), 0),
-      }))
+      monthlyFlow: combinedMonthlyFlow
     };
-  }, []);
+  }, [dynamicProjectData]);
 
   const resikStats = useMemo(() => {
-    const resikTransactions = PROJECT_DATA['Resik'].transactions;
+    const resikTransactions = dynamicProjectData['Resik'].transactions;
     
     // Perhitungan yang lebih akurat untuk dana 'Disalurkan'
     const distributed = resikTransactions.reduce((acc, tx) => {
@@ -1147,24 +1399,24 @@ const App: React.FC = () => {
     }, 0);
     
     return { savings, distributed };
-  }, []);
+  }, [dynamicProjectData]);
 
-  const currentData = activeProject === 'Semua' ? aggregatedData : PROJECT_DATA[activeProject];
+  const currentData = activeProject === 'Semua' ? aggregatedData : dynamicProjectData[activeProject];
   const Icon = ProjectIcons[activeProject];
   const Timeline = ProjectTimelines[activeProject];
 
   const pieData = useMemo(() => {
     if (activeProject === 'Semua') {
-      const resikCintaGuru = PROJECT_DATA['Resik'].transactions.reduce((acc, tx) => {
+      const resikCintaGuru = dynamicProjectData['Resik'].transactions.reduce((acc: number, tx: any) => {
         const desc = tx.description.toLowerCase();
         return desc.includes('cinta guru') && tx.expense ? acc + tx.expense : acc;
       }, 0);
-      const haruForCintaGuru = PROJECT_DATA['Haru'].summary.balance;
-      const bilistiwa = PROJECT_DATA['Siyar'].transactions.reduce((acc, tx) => {
+      const haruForCintaGuru = dynamicProjectData['Haru'].summary.balance;
+      const bilistiwa = dynamicProjectData['Siyar'].transactions.reduce((acc: number, tx: any) => {
         const desc = tx.description.toLowerCase();
         return (desc.includes('blistiwa') || desc.includes('bilistiwa')) && tx.expense ? acc + tx.expense : acc;
       }, 0);
-      const situasional = PROJECT_DATA['Hadeyya'].summary.balance;
+      const situasional = dynamicProjectData['Hadeyya'].summary.balance;
 
       return [
         { name: 'Dana Cinta Guru', value: resikCintaGuru + haruForCintaGuru, color: '#7C9B93' },
@@ -1172,13 +1424,29 @@ const App: React.FC = () => {
         { name: 'Situasional', value: situasional, color: '#638079' }
       ];
     }
-    const categories = (currentData as any).expenseCategories || [];
-    const totalAmount = currentData.summary.expense;
-    return categories.map((cat: any) => ({
-      ...cat,
-      nominal: Math.round((cat.value / 100) * totalAmount)
-    }));
-  }, [activeProject, currentData, aggregatedData]);
+    
+    // Dynamic categories calculation based on actual transactions
+    const expenseTx = currentData.transactions.filter((tx: any) => tx.expense && tx.expense > 0);
+    const categoryMap: Record<string, number> = {};
+    let totalCatExpense = 0;
+    
+    expenseTx.forEach((tx: any) => {
+      const cat = tx.category || 'Tanpa Kategori';
+      if (!categoryMap[cat]) categoryMap[cat] = 0;
+      categoryMap[cat] += tx.expense;
+      totalCatExpense += tx.expense;
+    });
+
+    const categories = Object.entries(categoryMap).map(([name, value], index) => ({
+      name,
+      value: totalCatExpense > 0 ? Math.round((value / totalCatExpense) * 100) : 0,
+      nominal: value,
+      color: CHART_UNIQUE_PALETTE[index % CHART_UNIQUE_PALETTE.length]
+    })).sort((a, b) => b.nominal - a.nominal);
+
+    return categories.length > 0 ? categories : (currentData as any).expenseCategories.map((c: any) => ({...c, nominal: Math.round((c.value / 100) * currentData.summary.expense)}));
+
+  }, [activeProject, currentData, aggregatedData, dynamicProjectData]);
 
   const pieTotal = useMemo(() => {
     return pieData.reduce((acc: number, item: any) => {
@@ -1227,13 +1495,22 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!adminSession) return;
-    const managed: ProjectKey = adminSession.project === 'all' ? adminTargetProject : adminSession.project;
+    const managed: ProjectType = adminSession.project === 'all' ? adminTargetProject : adminSession.project;
+    if (managed === 'Semua') return;
     const p = editableProfiles[managed];
     setProfileDraft({
       vision: p.vision,
-      missionsText: p.missions.join('\n'),
-      agendaText: p.agenda.join('\n'),
-      teamText: p.team.map((t) => `${t.name}|${t.role}`).join('\n')
+      missions: [...p.missions],
+      agenda: [...p.agenda],
+      team: p.team
+        .map((t: any) => {
+          if (typeof t === 'string') {
+            const parts = t.split('|');
+            return { name: parts[0] || '', role: parts[1] || '' };
+          }
+          return { name: t.name || '', role: t.role || '' };
+        })
+        .filter(t => t.name.trim() !== '' || t.role.trim() !== '')
     });
     setContributionDraft(p.contributions);
     setManualDraft(createEmptyManualDraft());
@@ -1246,7 +1523,7 @@ const App: React.FC = () => {
   }, [activeProject]);
 
   const projects: ProjectType[] = ['Semua', 'Resik', 'Hadeyya', 'Siyar', 'Haru'];
-  const managedProject: ProjectKey = adminSession?.project === 'all' ? adminTargetProject : (adminSession?.project || 'Resik');
+  const managedProject: ProjectType = adminSession?.project === 'all' ? adminTargetProject : (adminSession?.project || 'Resik');
   const activeProjectProfile = activeProject === 'Semua' ? null : editableProfiles[activeProject as ProjectKey];
   const activeProjectContributions = activeProject === 'Semua' ? null : editableProfiles[activeProject as ProjectKey].contributions;
   const currentProjectKey = activeProject === 'Semua' ? null : (activeProject as ProjectKey);
@@ -1262,22 +1539,31 @@ const App: React.FC = () => {
     return filter === 'income' ? t.income !== null : t.expense !== null;
   });
 
-  const manualRows = manualReportsByProject[activeProject];
-  const sortedManualRows = useMemo(
-    () =>
-      [...manualRows].sort((a, b) => {
-        const da = new Date(a.date).getTime();
-        const db = new Date(b.date).getTime();
-        if (db !== da) return db - da;
-        return b.id - a.id;
-      }),
-    [manualRows]
-  );
+  const sortedManualRows = useMemo(() => {
+    if (managedProject === 'Semua') {
+      const all: any[] = [];
+      PROJECT_KEYS.forEach(k => {
+        const rows = (manualReportsByProject[k] || []).map(r => ({ ...r, projectSource: k }));
+        all.push(...rows);
+      });
+      return all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
+    const list = manualReportsByProject[managedProject as ProjectKey] || [];
+    return [...list].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [manualReportsByProject, managedProject]);
 
   const manualIncomeTotal = sortedManualRows.reduce((acc, row) => acc + (row.type === 'Masuk' ? row.amount : 0), 0);
   const manualExpenseTotal = sortedManualRows.reduce((acc, row) => acc + (row.type === 'Keluar' ? row.amount : 0), 0);
   const manualSavingsTotal = sortedManualRows.reduce((acc, row) => acc + (row.type === 'Tabungan' ? row.amount : 0), 0);
   const manualBalance = manualIncomeTotal - manualExpenseTotal - manualSavingsTotal;
+  
+  const manualDistributedTotal = sortedManualRows.reduce((acc, row) => {
+    const desc = row.description.toLowerCase();
+    if ((desc.includes('salur') || (desc.includes('cinta guru') && !desc.includes('tabungan'))) && row.type === 'Keluar') {
+      return acc + row.amount;
+    }
+    return acc;
+  }, 0);
 
   const rowsPerPage = 10;
   const totalPages = Math.max(1, Math.ceil(sortedManualRows.length / rowsPerPage));
@@ -1342,43 +1628,45 @@ const App: React.FC = () => {
       return;
     }
     const amount = parseRupiahInput(manualDraft.amountInput);
+    const isEdit = txModalMode === 'edit' && editingTxId !== null;
+    const nextId = isEdit ? editingTxId! : crypto.randomUUID();
+
+    const dbPayload = {
+      id: nextId,
+      project: activeProject,
+      date: manualDraft.date,
+      type: manualDraft.type,
+      description: manualDraft.description.trim(),
+      amount,
+      category: manualDraft.category.trim(),
+      note: manualDraft.note.trim()
+    };
+
+    if (isEdit) {
+      supabase.from('transactions').update(dbPayload).eq('id', nextId).then(({ error }) => {
+        if (error) console.error('Supabase error updating tx:', error);
+      });
+    } else {
+      supabase.from('transactions').insert(dbPayload).then(({ error }) => {
+        if (error) console.error('Supabase error inserting tx:', error);
+      });
+    }
 
     setManualReportsByProject((prev) => {
-      const list = prev[activeProject];
-      if (txModalMode === 'edit' && editingTxId !== null) {
-        return {
-          ...prev,
-          [activeProject]: list.map((tx) =>
-            tx.id === editingTxId
-              ? {
-                  ...tx,
-                  date: manualDraft.date,
-                  type: manualDraft.type,
-                  description: manualDraft.description.trim(),
-                  amount,
-                  category: manualDraft.category.trim(),
-                  note: manualDraft.note.trim()
-                }
-              : tx
-          )
-        };
-      }
-
-      const nextId = list.length ? Math.max(...list.map((x) => x.id)) + 1 : 1;
+      const list = prev[activeProject] || [];
+      const newRow = {
+        id: nextId,
+        date: manualDraft.date,
+        type: manualDraft.type,
+        description: manualDraft.description.trim(),
+        amount,
+        category: manualDraft.category.trim(),
+        note: manualDraft.note.trim()
+      };
+      
       return {
         ...prev,
-        [activeProject]: [
-          ...list,
-          {
-            id: nextId,
-            date: manualDraft.date,
-            type: manualDraft.type,
-            description: manualDraft.description.trim(),
-            amount,
-            category: manualDraft.category.trim(),
-            note: manualDraft.note.trim()
-          }
-        ]
+        [activeProject]: isEdit ? list.map(tx => tx.id === editingTxId ? newRow : tx) : [...list, newRow]
       };
     });
 
@@ -1393,9 +1681,14 @@ const App: React.FC = () => {
     setIsTxModalOpen(false);
   };
 
-  const deleteManualTransaction = (id: number) => {
+  const deleteManualTransaction = (id: string | number) => {
     const ok = window.confirm('Hapus transaksi ini?');
     if (!ok) return;
+    
+    supabase.from('transactions').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('Supabase error deleting tx:', error);
+    });
+
     setManualReportsByProject((prev) => ({
       ...prev,
       [activeProject]: prev[activeProject].filter((tx) => tx.id !== id)
@@ -1407,20 +1700,15 @@ const App: React.FC = () => {
     updateProjectProfile(managedProject, (p) => ({
       ...p,
       vision: profileDraft.vision.trim() || p.vision,
-      missions: profileDraft.missionsText.split('\n').map((s) => s.trim()).filter(Boolean),
-      agenda: profileDraft.agendaText.split('\n').map((s) => s.trim()).filter(Boolean),
-      team: profileDraft.teamText
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line, idx) => {
-          const [name, role] = line.split('|');
-          return {
-            name: (name || '').trim() || `Tim ${idx + 1}`,
-            role: (role || '').trim() || 'Relawan',
-            photo: ''
-          };
-        })
+      missions: profileDraft.missions.map((s) => s.trim()).filter(Boolean),
+      agenda: profileDraft.agenda.map((s) => s.trim()).filter(Boolean),
+      team: profileDraft.team
+        .filter(member => member.name?.trim() || member.role?.trim())
+        .map((member, idx) => ({
+          name: member.name?.trim() || `Tim ${idx + 1}`,
+          role: member.role?.trim() || 'Relawan',
+          photo: ''
+        }))
     }));
     showToast('Profil project tersimpan.');
   };
@@ -1493,6 +1781,20 @@ const App: React.FC = () => {
   const updateProjectProfile = (project: ProjectKey, updater: (p: ProjectProfile) => ProjectProfile) => {
     setEditableProfiles((prev) => {
       const next = { ...prev, [project]: updater(prev[project]) };
+      const profile = next[project];
+      
+      supabase.from('project_profiles').upsert({
+        project_key: project,
+        vision: profile.vision,
+        missions: profile.missions,
+        agenda: profile.agenda,
+        team: profile.team,
+        contributions: profile.contributions,
+        updated_at: new Date().toISOString()
+      }).then(({ error }) => {
+        if (error) console.error('Supabase error saving profile:', error);
+      });
+
       localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
@@ -1501,8 +1803,21 @@ const App: React.FC = () => {
   };
 
   const handleVolunteerApply = (payload: { project: ProjectKey; name: string; skill: string; commitment: string }) => {
+    const nextId = crypto.randomUUID();
+    const newVol = {
+      id: nextId,
+      project: payload.project,
+      name: payload.name,
+      skill: payload.skill,
+      commitment: payload.commitment,
+      created_at: new Date().toISOString()
+    };
+    
+    supabase.from('volunteers').insert(newVol).then(({ error }) => {
+      if (error) console.error('Supabase error saving volunteer:', error);
+    });
+
     setVolunteerApplyByProject((prev) => {
-      const nextId = prev[payload.project].length ? Math.max(...prev[payload.project].map((x) => x.id)) + 1 : 1;
       return {
         ...prev,
         [payload.project]: [
@@ -1512,9 +1827,9 @@ const App: React.FC = () => {
             name: payload.name,
             skill: payload.skill,
             commitment: payload.commitment,
-            createdAt: new Date().toISOString()
+            createdAt: newVol.created_at
           },
-          ...prev[payload.project]
+          ...(prev[payload.project] || [])
         ]
       };
     });
@@ -1587,17 +1902,7 @@ const App: React.FC = () => {
 
   const handleAdminLogin = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const found = ADMIN_ACCOUNTS.find((a) => a.username === adminUsername.trim() && a.password === adminPassword);
-    if (!found) {
-      setAdminLoginError('Username atau password salah.');
-      return;
-    }
-    setAdminSession({ username: found.username, project: found.project });
-    setAdminTargetProject(found.project === 'all' ? 'Resik' : found.project);
-    setActiveProject(found.project === 'all' ? 'Resik' : found.project);
-    setAdminTab('profil');
-    setAdminLoginError('');
-    setAdminPassword('');
+    handleGoogleLogin();
   };
 
   const openDashboard = () => {
@@ -1607,34 +1912,87 @@ const App: React.FC = () => {
     }
   };
 
+  const transactionModalJSX = isTxModalOpen && canEditCurrentProject ? (
+    <div className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-[#F8FAFA] shadow-2xl border border-[#7C9B93]/20 w-full max-w-xl p-6 md:p-8 rounded-[24px]">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-[14px] font-black uppercase tracking-widest text-main">
+            {txModalMode === 'create' ? 'Tambah Transaksi' : 'Edit Transaksi'}
+          </h3>
+          <button onClick={() => setIsTxModalOpen(false)} className="text-muted hover:text-main transition-colors p-1">
+            <X size={20} strokeWidth={2.5} />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <input type="date" value={manualDraft.date} onChange={(e) => updateManualDraftField('date', e.target.value)} className="w-full rounded-[16px] px-4 py-3 text-[12px] font-bold text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm" />
+          <div className="relative">
+            <select value={manualDraft.type} onChange={(e) => updateManualDraftField('type', e.target.value as 'Masuk' | 'Keluar' | 'Tabungan')} className="appearance-none w-full rounded-[16px] px-4 pr-12 py-3 text-[12px] font-bold text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm cursor-pointer">
+              <option value="Masuk">Masuk</option>
+              <option value="Keluar">Keluar</option>
+              <option value="Tabungan">Tabungan</option>
+            </select>
+            <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#7C9B93] pointer-events-none" />
+          </div>
+          <input value={manualDraft.description} onChange={(e) => updateManualDraftField('description', e.target.value)} placeholder="Uraian transaksi" className="w-full rounded-[16px] px-4 py-3 text-[12px] font-bold text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm" />
+          <input value={manualDraft.amountInput} onChange={(e) => updateManualDraftField('amountInput', e.target.value)} placeholder="Jumlah (Rp)" className="w-full rounded-[16px] px-4 py-3 text-[12px] font-bold text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm" />
+          <input value={manualDraft.category} onChange={(e) => updateManualDraftField('category', e.target.value)} placeholder="Kategori (contoh: Donasi, Operasional, Tabungan)" className="w-full rounded-[16px] px-4 py-3 text-[12px] font-bold text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm" />
+          <input value={manualDraft.note} onChange={(e) => updateManualDraftField('note', e.target.value)} placeholder="Keterangan (opsional)" className="w-full rounded-[16px] px-4 py-3 text-[12px] font-bold text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm" />
+        </div>
+        {txValidationError && <p className="mt-3 text-[11px] font-black text-red-500">{txValidationError}</p>}
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button onClick={() => saveTransactionDraft(false)} className="px-5 py-2.5 rounded-[14px] bg-[#7C9B93] text-white text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-[#638079] transition-colors">Simpan</button>
+          <button onClick={() => saveTransactionDraft(true)} className="px-5 py-2.5 rounded-[14px] bg-[#7C9B93]/20 text-[#7C9B93] text-[10px] font-black uppercase tracking-widest hover:bg-[#7C9B93]/30 transition-colors">Simpan & Tambah Lagi</button>
+          <button onClick={() => setIsTxModalOpen(false)} className="px-5 py-2.5 rounded-[14px] bg-white border border-[#A68B8B]/20 text-[10px] font-black uppercase tracking-widest text-[#A68B8B] hover:bg-gray-50 transition-colors">Batal</button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const toastJSX = toast ? (
+    <div className={`fixed top-6 right-6 z-[95] px-4 py-3 rounded-[16px] shadow-lg bg-white border ${toast.type === 'error' ? 'border-[#A68B8B]/30' : 'border-[#7C9B93]/20'} text-[11px] font-black uppercase tracking-widest ${toast.type === 'error' ? 'text-[#A68B8B]' : 'text-[#7C9B93]'}`}>
+      {toast.message}
+    </div>
+  ) : null;
+
   if (viewMode === 'admin' && !adminSession) {
     return (
-      <div className="min-h-screen p-4 md:p-10 max-w-7xl mx-auto pb-24">
-        <div className="max-w-xl mx-auto rounded-2xl border border-[#7C9B93]/20 bg-white/80 shadow-lg p-8 md:p-10">
-          <p className="text-[10px] font-black uppercase tracking-widest text-[#7C9B93] mb-2">Admin Access</p>
-          <h2 className="text-[16px] font-black uppercase tracking-widest text-main mb-6">Admin Login</h2>
-          <form className="space-y-4" onSubmit={handleAdminLogin}>
-            <input
-              value={adminUsername}
-              onChange={(e) => setAdminUsername(e.target.value)}
-              placeholder="Username"
-              className="w-full rounded-2xl px-4 py-3 text-[13px] font-semibold text-main bg-transparent border border-[#7C9B93]/20 outline-none"
-            />
-            <input
-              type="password"
-              value={adminPassword}
-              onChange={(e) => setAdminPassword(e.target.value)}
-              placeholder="Password"
-              className="w-full rounded-2xl px-4 py-3 text-[13px] font-semibold text-main bg-transparent border border-[#7C9B93]/20 outline-none"
-            />
-            {adminLoginError && <p className="text-[12px] font-black text-[#A68B8B]">{adminLoginError}</p>}
-            <button type="submit" className="w-full px-4 py-3 rounded-2xl bg-[#7C9B93] text-white text-[12px] font-black uppercase tracking-widest">
-              Login Admin
-            </button>
-            <button type="button" onClick={openDashboard} className="w-full px-4 py-3 rounded-2xl clay-button text-[12px] font-black uppercase">
-              Kembali Dashboard
-            </button>
-          </form>
+      <div className="min-h-screen p-4 flex items-center justify-center bg-[#F8FAFA]">
+        <div className="w-full max-w-md fade-in-section">
+          <div className="clay-card p-10 space-y-8 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-[#7C9B93]/30" />
+            
+            <div className="text-center space-y-2">
+              <div className="inline-flex p-4 rounded-3xl clay-inset mb-4">
+                <Lock size={32} className="text-[#7C9B93]" />
+              </div>
+              <h1 className="text-[20px] font-black uppercase tracking-[0.2em] text-main">Admin Access</h1>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-muted">Akses Khusus Pengelola Project</p>
+            </div>
+
+            <div className="space-y-4">
+              <button 
+                onClick={handleGoogleLogin} 
+                className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-white border border-[#7C9B93]/20 text-main text-[12px] font-black uppercase tracking-[0.1em] shadow-md hover:bg-gray-50 active:scale-[0.98] transition-all"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Masuk dengan Gmail
+              </button>
+              
+              <button 
+                type="button" 
+                onClick={openDashboard} 
+                className="w-full py-4 rounded-2xl text-muted text-[11px] font-black uppercase tracking-widest hover:text-main transition-colors"
+              >
+                Kembali ke Dashboard
+              </button>
+            </div>
+          </div>
+          <p className="text-center mt-8 text-[10px] font-black uppercase tracking-[0.2em] text-muted">Project Ummahat &copy; 2026</p>
         </div>
       </div>
     );
@@ -1642,146 +2000,624 @@ const App: React.FC = () => {
 
   if (viewMode === 'admin' && adminSession) {
     const volunteerList = volunteerApplyByProject[managedProject] || [];
+
     return (
-      <div className="min-h-screen p-4 md:p-10 max-w-6xl mx-auto space-y-6 pb-24">
-        <div className="clay-card p-6 md:p-8 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <div>
-            <h2 className="text-[16px] font-black uppercase tracking-widest text-main">Admin Panel {managedProject}</h2>
-            <p className="text-[10px] font-black uppercase tracking-widest text-muted">Login: {adminSession.username}</p>
-          </div>
-          <div className="flex gap-2">
-            {adminSession.project === 'all' && (
-              <select
-                value={managedProject}
-                onChange={(e) => {
-                  const p = e.target.value as ProjectKey;
-                  setAdminTargetProject(p);
-                  setActiveProject(p);
-                  setAdminTab('profil');
-                }}
-                className="rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-widest border border-[#7C9B93]/20 bg-transparent"
-              >
-                {PROJECT_KEYS.map((k) => (
-                  <option key={k} value={k}>{k}</option>
-                ))}
-              </select>
-            )}
-            <button onClick={openDashboard} className="clay-button !px-4 !py-2 !rounded-xl text-[10px] font-black uppercase !tracking-widest !text-[#7C9B93]">Dashboard</button>
-            <button onClick={() => setAdminSession(null)} className="clay-button !px-4 !py-2 !rounded-xl text-[10px] font-black uppercase !tracking-widest !text-[#A68B8B]">Logout</button>
-          </div>
-        </div>
-
-        <div className="clay-inset p-2 flex flex-wrap gap-2">
-          {(['profil', 'keuangan', 'kontribusi', 'setting'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setAdminTab(tab)}
-              className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest ${adminTab === tab ? 'bg-[#7C9B93] text-white' : 'text-muted'}`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-
-        {adminTab === 'profil' && (
-          <div className="clay-card p-6 md:p-8 space-y-4">
-            <textarea value={profileDraft.vision} onChange={(e) => setProfileDraft((d) => ({ ...d, vision: e.target.value }))} rows={3} className="w-full rounded-xl px-4 py-3 text-[12px] font-semibold border border-[#7C9B93]/20 bg-transparent" placeholder="Visi" />
-            <textarea value={profileDraft.missionsText} onChange={(e) => setProfileDraft((d) => ({ ...d, missionsText: e.target.value }))} rows={4} className="w-full rounded-xl px-4 py-3 text-[12px] font-semibold border border-[#7C9B93]/20 bg-transparent" placeholder="Misi (1 baris = 1 item)" />
-            <textarea value={profileDraft.agendaText} onChange={(e) => setProfileDraft((d) => ({ ...d, agendaText: e.target.value }))} rows={4} className="w-full rounded-xl px-4 py-3 text-[12px] font-semibold border border-[#7C9B93]/20 bg-transparent" placeholder="Agenda project" />
-            <textarea value={profileDraft.teamText} onChange={(e) => setProfileDraft((d) => ({ ...d, teamText: e.target.value }))} rows={4} className="w-full rounded-xl px-4 py-3 text-[12px] font-semibold border border-[#7C9B93]/20 bg-transparent" placeholder="Tim (Nama|Role)" />
-            <button onClick={saveAdminProfileDraft} className="px-4 py-2 rounded-xl bg-[#7C9B93] text-white text-[11px] font-black uppercase tracking-widest">Simpan Profil</button>
-
-            <div className="pt-4 border-t border-[#7C9B93]/15">
-              <h3 className="text-[12px] font-black uppercase tracking-widest text-main mb-2">List Relawan Apply</h3>
-              <div className="space-y-2">
-                {volunteerList.length === 0 && <p className="text-[11px] font-semibold text-muted">Belum ada relawan apply.</p>}
-                {volunteerList.map((v) => (
-                  <div key={v.id} className="rounded-xl border border-[#7C9B93]/15 p-3 text-[11px] font-semibold">
-                    <p className="font-black text-main">{v.name} - {v.commitment}</p>
-                    <p className="text-muted">Keahlian: {v.skill}</p>
-                  </div>
-                ))}
+      <div className="min-h-screen bg-[#F8FAFA] pb-32">
+        {/* Admin Top Header */}
+        <div className="bg-white border-b border-[#7C9B93]/10 sticky top-0 z-[60]">
+          <div className="max-w-6xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-2xl bg-[#7C9B93]/10 flex items-center justify-center text-[#7C9B93]">
+                <ShieldCheck size={24} />
+              </div>
+              <div>
+                <h2 className="text-[14px] font-black uppercase tracking-widest text-main">Console Admin</h2>
+                <p className="text-[10px] font-bold text-muted uppercase tracking-tight">{managedProject} | {adminSession.username}</p>
               </div>
             </div>
-          </div>
-        )}
-
-        {adminTab === 'kontribusi' && (
-          <div className="clay-card p-6 md:p-8 space-y-3">
-            {contributionDraft.map((c, idx) => (
-              <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-2 rounded-xl border border-[#7C9B93]/15 p-3">
-                <input value={c.title} onChange={(e) => setContributionDraft((prev) => prev.map((x, i) => i === idx ? { ...x, title: e.target.value } : x))} className="md:col-span-3 rounded-lg px-3 py-2 text-[11px] font-black uppercase border border-[#7C9B93]/20 bg-transparent" placeholder="Judul" />
-                <input value={c.value} onChange={(e) => setContributionDraft((prev) => prev.map((x, i) => i === idx ? { ...x, value: e.target.value } : x))} className="md:col-span-2 rounded-lg px-3 py-2 text-[11px] font-black border border-[#7C9B93]/20 bg-transparent" placeholder="Jumlah" />
-                <input value={c.description} onChange={(e) => setContributionDraft((prev) => prev.map((x, i) => i === idx ? { ...x, description: e.target.value } : x))} className="md:col-span-5 rounded-lg px-3 py-2 text-[11px] font-semibold border border-[#7C9B93]/20 bg-transparent" placeholder="Deskripsi" />
-                <button onClick={() => setContributionDraft((prev) => prev.filter((_, i) => i !== idx))} className="md:col-span-2 rounded-lg px-3 py-2 text-[10px] font-black uppercase text-[#A68B8B] border border-[#A68B8B]/25">Hapus</button>
-              </div>
-            ))}
             <div className="flex gap-2">
-              <button onClick={() => setContributionDraft((prev) => [...prev, { title: '', value: '', description: '', illustration: 'reduction' }])} className="clay-button !px-4 !py-2 !rounded-xl text-[10px] font-black uppercase !tracking-widest !text-[#7C9B93]">Tambah Item</button>
-              <button onClick={saveAdminContributionDraft} className="px-4 py-2 rounded-xl bg-[#7C9B93] text-white text-[10px] font-black uppercase tracking-widest">Simpan Kontribusi</button>
+              <button onClick={openDashboard} className="p-2.5 rounded-xl clay-button text-[#7C9B93] hidden md:flex items-center gap-2">
+                <Home size={18} /> <span className="text-[10px] font-black uppercase tracking-widest">Live View</span>
+              </button>
+              <button onClick={handleLogout} className="p-2.5 rounded-xl clay-button text-[#A68B8B] flex items-center gap-2">
+                <LogOut size={18} /> <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Logout</span>
+              </button>
             </div>
           </div>
-        )}
+        </div>
 
-        {adminTab === 'keuangan' && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <div className="rounded-xl bg-[#7C9B93]/10 p-3"><p className="text-[10px] font-black uppercase tracking-widest text-muted">Pemasukan</p><p className="text-[16px] font-black text-[#7C9B93]">{formatRupiah(manualIncomeTotal)}</p></div>
-              <div className="rounded-xl bg-[#A68B8B]/10 p-3"><p className="text-[10px] font-black uppercase tracking-widest text-muted">Pengeluaran</p><p className="text-[16px] font-black text-[#A68B8B]">{formatRupiah(manualExpenseTotal)}</p></div>
-              <div className="rounded-xl bg-[#718096]/10 p-3"><p className="text-[10px] font-black uppercase tracking-widest text-muted">Tabungan</p><p className="text-[16px] font-black text-[#718096]">{formatRupiah(manualSavingsTotal)}</p></div>
-              <div className="rounded-xl bg-[#7C9B93]/10 p-3"><p className="text-[10px] font-black uppercase tracking-widest text-muted">Saldo Akhir</p><p className="text-[16px] font-black text-main">{formatRupiah(Math.max(0, manualBalance))}</p></div>
-            </div>
-            <div className="clay-card p-4">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-[12px] font-black uppercase tracking-widest text-main">Transaksi</h3>
-                <div className="flex gap-2">
-                  <button onClick={exportExcelTransactions} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest !text-[#7C9B93] flex items-center gap-1"><FileSpreadsheet size={12}/>Excel</button>
-                  <button onClick={exportPdfTransactions} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest !text-[#7C9B93] flex items-center gap-1"><FileText size={12}/>PDF</button>
-                  <button onClick={openCreateTransactionModal} className="px-3 py-1.5 rounded-xl bg-[#7C9B93] text-white text-[9px] font-black uppercase tracking-widest flex items-center gap-1"><Plus size={12}/>Tambah</button>
-                </div>
-              </div>
-              <div className="overflow-auto rounded-xl border border-[#7C9B93]/15">
-                <table className="w-full min-w-[820px]">
-                  <thead><tr className="text-[10px] font-black uppercase tracking-widest text-muted bg-[#7C9B93]/7"><th className="px-3 py-2 text-left">#</th><th className="px-3 py-2 text-left">Tanggal</th><th className="px-3 py-2 text-left">Uraian</th><th className="px-3 py-2 text-left">Jenis</th><th className="px-3 py-2 text-left">Kategori</th><th className="px-3 py-2 text-right">Jumlah</th><th className="px-3 py-2 text-center">Aksi</th></tr></thead>
-                  <tbody>
-                    {pagedRows.map((row, idx) => (
-                      <tr key={row.id} className="border-t border-[#7C9B93]/10 text-[11px] font-semibold text-main">
-                        <td className="px-3 py-2">{(txPage - 1) * rowsPerPage + idx + 1}</td>
-                        <td className="px-3 py-2">{row.date}</td>
-                        <td className="px-3 py-2">{row.description}</td>
-                        <td className="px-3 py-2">{row.type}</td>
-                        <td className="px-3 py-2">{row.category || '-'}</td>
-                        <td className={`px-3 py-2 text-right font-black ${row.type === 'Masuk' ? 'text-[#7C9B93]' : row.type === 'Keluar' ? 'text-[#A68B8B]' : 'text-[#718096]'}`}>{row.type === 'Masuk' ? '+ ' : '- '}{formatRupiah(row.amount)}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex justify-center gap-2">
-                            <button onClick={() => openEditTransactionModal(row)} className="text-[#7C9B93]"><Pencil size={14}/></button>
-                            <button onClick={() => deleteManualTransaction(row.id)} className="text-[#A68B8B]"><Trash2 size={14}/></button>
-                          </div>
-                        </td>
-                      </tr>
+        <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 space-y-6">
+          {/* Admin Project Switcher (Only for SuperAdmin) */}
+          {adminSession.project === 'all' && (
+            <div className="clay-card p-4 flex items-center justify-between gap-4">
+               <div className="flex items-center gap-3">
+                 <span className="text-[10px] font-black uppercase tracking-widest text-muted">Switch Project:</span>
+                 <div className="flex flex-wrap gap-2">
+                    <button 
+                      onClick={() => { setAdminTargetProject('Semua'); setActiveProject('Semua'); }}
+                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${managedProject === 'Semua' ? 'bg-[#7C9B93] text-white' : 'bg-[#7C9B93]/5 text-[#7C9B93] hover:bg-[#7C9B93]/10'}`}
+                    >
+                      SEMUA
+                    </button>
+                    {PROJECT_KEYS.map(k => (
+                      <button 
+                        key={k} 
+                        onClick={() => { setAdminTargetProject(k); setActiveProject(k); }}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${managedProject === k ? 'bg-[#7C9B93] text-white' : 'bg-[#7C9B93]/5 text-[#7C9B93] hover:bg-[#7C9B93]/10'}`}
+                      >
+                        {k}
+                      </button>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-muted">Halaman {txPage}/{totalPages}</span>
-                <div className="flex gap-2">
-                  <button onClick={() => setTxPage((p) => Math.max(1, p - 1))} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest !text-[#7C9B93]">Prev</button>
-                  <button onClick={() => setTxPage((p) => Math.min(totalPages, p + 1))} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest !text-[#7C9B93]">Next</button>
+                 </div>
+               </div>
+            </div>
+          )}
+
+          {/* Navigation Tabs */}
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2">
+            {[
+              { id: 'profil', icon: Layout },
+              { id: 'keuangan', icon: Wallet },
+              { id: 'kontribusi', icon: Heart },
+              ...(adminSession.project === 'all' ? [{ id: 'admin_management', icon: ShieldCheck }] : []),
+              { id: 'setting', icon: Settings }
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = adminTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setAdminTab(tab.id as any)}
+                  className={`flex items-center gap-2 px-6 py-3.5 rounded-[20px] text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+                    isActive ? 'bg-[#7C9B93] text-white shadow-[0_8px_15px_rgba(124,155,147,0.25)]' : 'bg-white text-muted border border-[#7C9B93]/10 hover:border-[#7C9B93]/30'
+                  }`}
+                >
+                  <Icon size={16} />
+                  {tab.id.replace('_', ' ')}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Content Area */}
+          <div className="fade-in-section">
+            {managedProject === 'Semua' && (adminTab === 'profil' || adminTab === 'kontribusi') && (
+              <div className="space-y-8 max-w-4xl mx-auto">
+                <div className="clay-card p-10 md:p-14 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  <div className="flex flex-col md:flex-row items-center md:items-start gap-8">
+                    <div className="w-16 h-16 rounded-3xl clay-inset flex items-center justify-center text-[#7C9B93] flex-shrink-0">
+                      <Shield size={32} />
+                    </div>
+                    <div className="space-y-4 text-center md:text-left flex-1">
+                      <div className="flex items-center justify-between border-b-4 border-[#7C9B93]/20 pb-2 mb-4">
+                        <h3 className="text-[18px] md:text-[22px] font-black uppercase tracking-[0.2em] text-main">
+                          Transparansi & Amanah
+                        </h3>
+                        <span className="text-[10px] font-black text-[#7C9B93] uppercase bg-[#7C9B93]/10 px-3 py-1 rounded-full">Superadmin Edit Mode</span>
+                      </div>
+                      
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-muted ml-1">Deskripsi Narasi</label>
+                          <textarea 
+                            value={editableProfiles['Semua'].vision}
+                            onChange={(e) => setEditableProfiles(prev => ({ ...prev, Semua: { ...prev.Semua, vision: e.target.value } }))}
+                            rows={4}
+                            className="w-full rounded-2xl px-4 py-4 text-[14px] font-semibold text-main border border-[#7C9B93]/15 bg-white/50 focus:bg-white outline-none focus:border-[#7C9B93]/40 transition-all"
+                            placeholder="Ketik narasi transparansi di sini..."
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-muted ml-1">Kutipan / Quote</label>
+                          <textarea 
+                            value={editableProfiles['Semua'].missions[0] || ''}
+                            onChange={(e) => setEditableProfiles(prev => ({ ...prev, Semua: { ...prev.Semua, missions: [e.target.value] } }))}
+                            rows={3}
+                            className="w-full rounded-2xl px-4 py-4 text-[13px] md:text-[14px] font-black italic text-main border border-[#7C9B93]/15 bg-white/50 focus:bg-white outline-none focus:border-[#7C9B93]/40 transition-all"
+                            placeholder="Ketik kutipan di sini..."
+                          />
+                        </div>
+
+                        <button 
+                          onClick={() => {
+                            localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(editableProfiles));
+                            showToast('Narasi global berhasil disimpan.');
+                          }}
+                          className="px-8 py-4 rounded-2xl bg-[#7C9B93] text-white text-[11px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+                        >
+                          Simpan Narasi Global
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-center">
+                  <p className="text-[11px] font-black uppercase tracking-widest text-muted bg-[#7C9B93]/5 inline-block px-6 py-3 rounded-full border border-[#7C9B93]/10">
+                    Perubahan ini akan langsung muncul di halaman depan dashboard publik
+                  </p>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {adminTab === 'setting' && (
-          <div className="clay-card p-6 md:p-8 space-y-3">
-            <p className="text-[12px] font-semibold text-main">Pengaturan data project aktif: <span className="font-black">{managedProject}</span></p>
-            <button onClick={resetProjectData} className="px-4 py-2 rounded-xl border border-[#A68B8B]/35 text-[#A68B8B] text-[10px] font-black uppercase tracking-widest">
-              Reset Data Project
-            </button>
+            {adminTab === 'admin_management' && adminSession.project === 'all' && (
+              <div className="space-y-6">
+                <div className="clay-card p-8 space-y-8">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-[#7C9B93]/10 text-[#7C9B93]"><ShieldCheck size={20} /></div>
+                    <h3 className="text-[14px] font-black uppercase tracking-widest text-main">Daftar Admin Terdaftar</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4 border border-[#7C9B93]/10 p-6 rounded-3xl bg-[#7C9B93]/5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted">Tambah Admin Baru</p>
+                      <div className="space-y-3">
+                        <input 
+                          value={newAdminEmail}
+                          onChange={(e) => setNewAdminEmail(e.target.value)}
+                          placeholder="Email Gmail Admin..."
+                          className="w-full rounded-2xl px-4 py-4 text-[13px] font-semibold text-main border border-[#7C9B93]/15 bg-white outline-none focus:border-[#7C9B93]/40"
+                        />
+                        <select 
+                          value={newAdminProject}
+                          onChange={(e) => setNewAdminProject(e.target.value as any)}
+                          className="w-full rounded-2xl px-4 py-4 text-[13px] font-semibold text-main border border-[#7C9B93]/15 bg-white outline-none focus:border-[#7C9B93]/40"
+                        >
+                          <option value="all">Superadmin (Semua)</option>
+                          {PROJECT_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
+                        </select>
+                        <button 
+                          onClick={addAdminRole}
+                          className="w-full py-4 rounded-2xl bg-[#7C9B93] text-white text-[11px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+                        >
+                          Daftarkan Admin
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted">Daftar Akses</p>
+                      <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
+                        {adminRoles.map((role) => (
+                          <div key={role.email} className="flex items-center justify-between p-4 rounded-2xl border border-[#7C9B93]/10 bg-white hover:bg-gray-50 transition-colors">
+                            <div>
+                              <p className="text-[12px] font-black text-main">{role.email}</p>
+                              <p className="text-[9px] font-black uppercase tracking-widest text-[#7C9B93] mt-0.5">{role.project}</p>
+                            </div>
+                            <button 
+                              onClick={() => deleteAdminRole(role.email)}
+                              className="p-2.5 text-[#A68B8B] hover:bg-red-50 rounded-xl transition-all"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {adminTab === 'profil' && managedProject !== 'Semua' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div className="lg:col-span-8 space-y-6">
+                  <div className="clay-card p-6 md:p-8 space-y-6">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 rounded-xl bg-[#7C9B93]/10 text-[#7C9B93]"><Info size={18} /></div>
+                      <h3 className="text-[13px] font-black uppercase tracking-widest text-main">Identitas & Narasi</h3>
+                    </div>
+                    <div className="space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-muted ml-1">Visi Project</label>
+                        <textarea value={profileDraft.vision} onChange={(e) => setProfileDraft((d) => ({ ...d, vision: e.target.value }))} rows={3} className="w-full rounded-2xl px-4 py-4 text-[13px] font-semibold text-main border border-[#7C9B93]/15 bg-white outline-none focus:border-[#7C9B93]/40" placeholder="Apa visi besar project ini?" />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                        <div className="space-y-3 border border-[#7C9B93]/10 p-4 rounded-3xl bg-[#7C9B93]/5">
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-muted ml-1">Misi Project</label>
+                            <button onClick={() => setProfileDraft(d => ({ ...d, missions: [...d.missions, ''] }))} className="px-3 py-1.5 rounded-xl bg-white text-[#7C9B93] text-[9px] font-black uppercase tracking-widest hover:bg-[#7C9B93]/10 flex items-center gap-1 shadow-sm"><Plus size={12}/> Tambah</button>
+                          </div>
+                          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                            {profileDraft.missions.map((m, idx) => (
+                              <div key={`misi-${idx}`} className="flex gap-2">
+                                <input value={m} onChange={(e) => setProfileDraft(d => ({ ...d, missions: d.missions.map((x, i) => i === idx ? e.target.value : x) }))} className="flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold text-main border border-[#7C9B93]/15 bg-white outline-none focus:border-[#7C9B93]/40" placeholder={`Misi ${idx + 1}`} />
+                                <button onClick={() => setProfileDraft(d => ({ ...d, missions: d.missions.filter((_, i) => i !== idx) }))} className="p-2.5 text-[#A68B8B] hover:bg-white rounded-xl transition-colors"><Trash2 size={14}/></button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 border border-[#7C9B93]/10 p-4 rounded-3xl bg-[#7C9B93]/5">
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-muted ml-1">Agenda Rutin</label>
+                            <button onClick={() => setProfileDraft(d => ({ ...d, agenda: [...d.agenda, ''] }))} className="px-3 py-1.5 rounded-xl bg-white text-[#7C9B93] text-[9px] font-black uppercase tracking-widest hover:bg-[#7C9B93]/10 flex items-center gap-1 shadow-sm"><Plus size={12}/> Tambah</button>
+                          </div>
+                          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                            {profileDraft.agenda.map((a, idx) => (
+                              <div key={`agenda-${idx}`} className="flex gap-2">
+                                <input value={a} onChange={(e) => setProfileDraft(d => ({ ...d, agenda: d.agenda.map((x, i) => i === idx ? e.target.value : x) }))} className="flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold text-main border border-[#7C9B93]/15 bg-white outline-none focus:border-[#7C9B93]/40" placeholder={`Agenda ${idx + 1}`} />
+                                <button onClick={() => setProfileDraft(d => ({ ...d, agenda: d.agenda.filter((_, i) => i !== idx) }))} className="p-2.5 text-[#A68B8B] hover:bg-white rounded-xl transition-colors"><Trash2 size={14}/></button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 border border-[#7C9B93]/10 p-5 rounded-3xl bg-[#7C9B93]/5 pt-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-muted ml-1">Struktur Tim Project</label>
+                          <button 
+                            type="button" 
+                            disabled={profileDraft.team.some(t => !t.name?.trim() || !t.role?.trim())}
+                            onClick={(e) => { 
+                              e.preventDefault(); 
+                              if (profileDraft.team.some(t => !t.name?.trim() || !t.role?.trim())) return;
+                              setProfileDraft(d => ({ ...d, team: [...d.team, { name: '', role: '' }] })); 
+                            }} 
+                            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1 shadow-sm transition-colors ${
+                              profileDraft.team.some(t => !t.name?.trim() || !t.role?.trim())
+                                ? 'bg-gray-100 text-[#A68B8B]/60 cursor-not-allowed border border-transparent'
+                                : 'bg-white text-[#7C9B93] hover:bg-[#7C9B93]/10 border border-transparent'
+                            }`}
+                          >
+                            <Plus size={12}/> Tambah Anggota
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {profileDraft.team.map((t, idx) => (
+                            <div key={`team-${idx}`} className="flex flex-col gap-3 p-4 rounded-2xl bg-white border border-[#7C9B93]/20 shadow-md relative group animate-in fade-in zoom-in duration-300">
+                              <button type="button" onClick={(e) => { e.preventDefault(); setProfileDraft(d => ({ ...d, team: d.team.filter((_, i) => i !== idx) })); }} className="absolute -top-2 -right-2 p-1.5 bg-red-100 text-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-200 z-10 shadow-sm"><X size={14}/></button>
+                              <div className="space-y-1.5">
+                                <label className="text-[9px] font-black uppercase tracking-widest text-muted ml-1">Nama Relawan</label>
+                                <input value={t.name || ''} onChange={(e) => setProfileDraft(d => ({ ...d, team: d.team.map((x, i) => i === idx ? { ...x, name: e.target.value } : x) }))} className="w-full rounded-xl px-3 py-2.5 text-[13px] font-bold text-main border border-[#7C9B93]/10 bg-[#F8FAFA] focus:bg-white focus:border-[#7C9B93]/40 focus:ring-2 focus:ring-[#7C9B93]/10 outline-none transition-all shadow-inner" placeholder="Ketik nama..." />
+                              </div>
+                              <div className="space-y-1.5">
+                                <label className="text-[9px] font-black uppercase tracking-widest text-muted ml-1">Posisi / Peran</label>
+                                <input value={t.role || ''} onChange={(e) => setProfileDraft(d => ({ ...d, team: d.team.map((x, i) => i === idx ? { ...x, role: e.target.value } : x) }))} className="w-full rounded-xl px-3 py-2.5 text-[13px] font-bold text-[#7C9B93] border border-[#7C9B93]/10 bg-[#F8FAFA] focus:bg-white focus:border-[#7C9B93]/40 focus:ring-2 focus:ring-[#7C9B93]/10 outline-none uppercase transition-all shadow-inner" placeholder="Contoh: KETUA" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={saveAdminProfileDraft} className="w-full md:w-auto px-8 py-4 rounded-2xl bg-[#7C9B93] text-white text-[11px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">
+                      Simpan Perubahan Profil
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="lg:col-span-4">
+                  <div className="clay-card p-6 md:p-8 h-full">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 rounded-xl bg-[#A68B8B]/10 text-[#A68B8B]"><Users size={18} /></div>
+                      <h3 className="text-[13px] font-black uppercase tracking-widest text-main">Relawan Pendaftar</h3>
+                    </div>
+                    <div className="space-y-3">
+                      {volunteerList.length === 0 ? (
+                        <div className="p-8 text-center border-2 border-dashed border-[#7C9B93]/10 rounded-2xl">
+                          <p className="text-[11px] font-bold text-muted uppercase">Belum ada pendaftar</p>
+                        </div>
+                      ) : (
+                        volunteerList.map((v) => (
+                          <div key={v.id} className="p-4 rounded-2xl border border-[#7C9B93]/10 bg-[#7C9B93]/5 hover:bg-white transition-colors">
+                            <p className="text-[12px] font-black text-main uppercase">{v.name}</p>
+                            <p className="text-[10px] font-bold text-[#7C9B93] uppercase tracking-tighter mt-0.5">{v.commitment}</p>
+                            <div className="mt-2 pt-2 border-t border-[#7C9B93]/10">
+                              <p className="text-[10px] text-muted leading-relaxed italic">"{v.skill}"</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {adminTab === 'keuangan' && (
+              // Aggregated View Logic
+              <div className="space-y-6">
+                {managedProject === 'Semua' ? (
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                    <div className="clay-card p-5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="p-2 rounded-xl clay-inset text-[#7C9B93]"><Wallet size={18} /></div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-muted">Total Saldo</span>
+                      </div>
+                      <p className="text-[18px] md:text-[22px] font-black text-main">{formatRupiah(aggregatedData.summary.balance)}</p>
+                    </div>
+                    <div className="clay-card p-5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="p-2 rounded-xl clay-inset text-[#638079]"><History size={18} /></div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-muted">Transaksi</span>
+                      </div>
+                      <p className="text-[18px] md:text-[22px] font-black text-main">{aggregatedData.transactions.length}</p>
+                    </div>
+                    <div className="clay-card p-5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="p-2 rounded-xl clay-inset text-[#7C9B93]"><TrendingUp size={18} /></div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-muted">Total Masuk</span>
+                      </div>
+                      <p className="text-[18px] md:text-[22px] font-black text-[#7C9B93]">{formatRupiah(aggregatedData.summary.income)}</p>
+                    </div>
+                    <div className="clay-card p-5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="p-2 rounded-xl clay-inset text-[#A68B8B]"><TrendingDown size={18} /></div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-muted">Total Keluar</span>
+                      </div>
+                      <p className="text-[18px] md:text-[22px] font-black text-[#A68B8B]">{formatRupiah(aggregatedData.summary.expense)}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[
+                      { label: 'Pemasukan', val: formatRupiah(manualIncomeTotal), color: '#7C9B93', icon: TrendingUp },
+                      { label: 'Pengeluaran', val: formatRupiah(manualExpenseTotal), color: '#A68B8B', icon: TrendingDown },
+                      { label: 'Tabungan', val: formatRupiah(manualSavingsTotal), color: '#718096', icon: Heart },
+                      { label: 'Disalurkan', val: formatRupiah(manualDistributedTotal), color: '#A68B8B', icon: Heart },
+                      { label: 'Total Transaksi', val: `${sortedManualRows.length} item`, color: '#638079', icon: History },
+                      { label: 'Saldo Akhir', val: formatRupiah(Math.max(0, manualBalance)), color: '#334155', icon: Wallet, highlight: true }
+                    ].map((stat, i) => (
+                      <div key={i} className={`clay-card p-5 space-y-3 ${stat.highlight ? 'bg-[#7C9B93]/5 border-[#7C9B93]/20' : ''}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="p-2 rounded-xl clay-inset" style={{ color: stat.color }}><stat.icon size={16} /></div>
+                          <span className="text-[9px] font-black uppercase tracking-widest text-muted">{stat.label}</span>
+                        </div>
+                        <p className="text-[15px] md:text-[18px] font-black tracking-tight" style={{ color: stat.color }}>{stat.val}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {managedProject === 'Semua' && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="clay-card p-8">
+                      <h3 className="text-[12px] font-black uppercase tracking-widest text-main flex items-center gap-3 mb-8">
+                        <BarChart3 size={18} className="text-[#7C9B93]" />
+                        Saldo Tersisa per Project
+                      </h3>
+                      <div className="h-[250px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={aggregatedData.projectBalanceContributions} layout="vertical">
+                            <XAxis type="number" hide />
+                            <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: 800, fill: 'var(--text-main)' }} width={80} />
+                            <Tooltip content={<CustomTooltip isDark={isDark} />} cursor={{ fill: 'transparent' }} />
+                            <Bar dataKey="value" radius={[0, 10, 10, 0]} barSize={25}>
+                              {aggregatedData.projectBalanceContributions.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    <div className="clay-card p-8">
+                      <h3 className="text-[12px] font-black uppercase tracking-widest text-main flex items-center gap-3 mb-8">
+                        <PieIcon size={18} className="text-[#7C9B93]" />
+                        Alokasi Dana Semua Project
+                      </h3>
+                      <div className="h-[250px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RePieChart>
+                            <Pie
+                              data={pieDisplayData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius="55%"
+                              outerRadius="80%"
+                              dataKey="value"
+                              paddingAngle={5}
+                              cornerRadius={10}
+                              stroke="none"
+                            >
+                              {pieDisplayData.map((e: any, i: number) => (
+                                <Cell key={i} fill={normalizeChartColor(e.renderColor || e.color)} />
+                              ))}
+                            </Pie>
+                            <Tooltip content={<CustomTooltip isDark={isDark} />} />
+                          </RePieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="clay-card p-6 md:p-8">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-[#7C9B93]/10 text-[#7C9B93]"><History size={18} /></div>
+                      <h3 className="text-[13px] font-black uppercase tracking-widest text-main">
+                        {managedProject === 'Semua' ? 'Log Transaksi Semua Project' : 'Log Transaksi'}
+                      </h3>
+                    </div>
+                    <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                      <button onClick={exportExcelTransactions} className="flex-1 md:flex-none px-4 py-2.5 rounded-xl border border-[#7C9B93]/20 text-[10px] font-black uppercase tracking-widest text-[#7C9B93] flex items-center justify-center gap-2 hover:bg-[#7C9B93]/5">
+                        <FileSpreadsheet size={14} /> Export
+                      </button>
+                      {managedProject !== 'Semua' && (
+                        <button onClick={openCreateTransactionModal} className="flex-1 md:flex-none px-4 py-2.5 rounded-xl bg-[#7C9B93] text-white text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-md">
+                          <Plus size={14} /> Transaksi Baru
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="hidden md:block overflow-x-auto rounded-2xl border border-[#7C9B93]/10">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-[#7C9B93]/5 text-[10px] font-black uppercase tracking-widest text-muted">
+                          <th className="px-6 py-4">Tgl</th>
+                          <th className="px-6 py-4">Uraian</th>
+                          <th className="px-6 py-4">Jenis</th>
+                          <th className="px-6 py-4">{managedProject === 'Semua' ? 'Project' : 'Kategori'}</th>
+                          <th className="px-6 py-4 text-right">Jumlah</th>
+                          {managedProject !== 'Semua' && <th className="px-6 py-4 text-center">Aksi</th>}
+                        </tr>
+                      </thead>
+                      <tbody className="text-[12px] font-semibold text-main divide-y divide-[#7C9B93]/10">
+                        {pagedRows.map((row) => (
+                          <tr key={row.id} className="hover:bg-[#7C9B93]/2 transition-colors">
+                            <td className="px-6 py-4 whitespace-nowrap">{row.date}</td>
+                            <td className="px-6 py-4 font-bold">{row.description}</td>
+                            <td className="px-6 py-4">
+                              <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${
+                                row.type === 'Masuk' ? 'bg-[#7C9B93]/10 text-[#7C9B93]' : 'bg-[#A68B8B]/10 text-[#A68B8B]'
+                              }`}>{row.type}</span>
+                            </td>
+                            <td className="px-6 py-4 text-muted">
+                              {managedProject === 'Semua' ? (
+                                <span className="font-black text-[#7C9B93]">{row.projectSource}</span>
+                              ) : (
+                                row.category || '-'
+                              )}
+                            </td>
+                            <td className={`px-6 py-4 text-right font-black ${row.type === 'Masuk' ? 'text-[#7C9B93]' : 'text-[#A68B8B]'}`}>
+                              {row.type === 'Masuk' ? '+' : '-'} {formatRupiah(row.amount)}
+                            </td>
+                            {managedProject !== 'Semua' && (
+                              <td className="px-6 py-4 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button onClick={() => openEditTransactionModal(row)} className="p-2 text-[#7C9B93] hover:bg-[#7C9B93]/10 rounded-lg transition-all"><Pencil size={14} /></button>
+                                  <button onClick={() => deleteManualTransaction(row.id)} className="p-2 text-[#A68B8B] hover:bg-[#A68B8B]/10 rounded-lg transition-all"><Trash2 size={14} /></button>
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="md:hidden space-y-3">
+                    {pagedRows.map((row) => (
+                      <div key={row.id} className="p-4 rounded-2xl border border-[#7C9B93]/15 bg-white space-y-3 shadow-sm">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="text-[10px] font-black text-muted uppercase">{row.date} | {row.category || 'No Category'}</p>
+                            <p className="text-[13px] font-black text-main uppercase mt-1 leading-tight">{row.description}</p>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase ${
+                            row.type === 'Masuk' ? 'bg-[#7C9B93]/10 text-[#7C9B93]' : 'bg-[#A68B8B]/10 text-[#A68B8B]'
+                          }`}>{row.type}</span>
+                        </div>
+                        <div className="flex justify-between items-center pt-2 border-t border-[#7C9B93]/5">
+                          <p className={`text-[14px] font-black ${row.type === 'Masuk' ? 'text-[#7C9B93]' : 'text-[#A68B8B]'}`}>
+                            {row.type === 'Masuk' ? '+' : '-'} {formatRupiah(row.amount)}
+                          </p>
+                          {managedProject === 'Semua' ? (
+                            <span className="text-[10px] font-black text-[#7C9B93] uppercase">{row.projectSource}</span>
+                          ) : (
+                            <div className="flex gap-2">
+                              <button onClick={() => openEditTransactionModal(row)} className="p-2.5 rounded-xl clay-button text-[#7C9B93]"><Pencil size={14} /></button>
+                              <button onClick={() => deleteManualTransaction(row.id)} className="p-2.5 rounded-xl clay-button text-[#A68B8B]"><Trash2 size={14} /></button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between mt-6 pt-6 border-t border-[#7C9B93]/10">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-muted">Page {txPage} of {totalPages}</span>
+                    <div className="flex gap-2">
+                      <button onClick={() => setTxPage((p) => Math.max(1, p - 1))} className="p-2.5 rounded-xl clay-button text-muted" disabled={txPage === 1}><ChevronLeft size={16} /></button>
+                      <button onClick={() => setTxPage((p) => Math.min(totalPages, p + 1))} className="p-2.5 rounded-xl clay-button text-muted" disabled={txPage === totalPages}><ChevronRight size={16} /></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {adminTab === 'kontribusi' && managedProject !== 'Semua' && (
+              <div className="max-w-4xl mx-auto clay-card p-6 md:p-8 space-y-8">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-[#7C9B93]/10 text-[#7C9B93]"><Heart size={18} /></div>
+                    <h3 className="text-[13px] font-black uppercase tracking-widest text-main">Capaian & Kontribusi</h3>
+                  </div>
+                  <button onClick={() => setContributionDraft((prev) => [...prev, { title: '', value: '', description: '', illustration: 'reduction' }])} className="px-4 py-2 rounded-xl bg-[#7C9B93]/10 text-[#7C9B93] text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                    <Plus size={14} /> Tambah Item
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {contributionDraft.map((c, idx) => (
+                    <div key={idx} className="p-5 rounded-2xl border border-[#7C9B93]/15 bg-white space-y-4 shadow-sm group">
+                      <div className="flex justify-between items-start">
+                        <span className="w-8 h-8 rounded-xl bg-[#7C9B93]/10 flex items-center justify-center text-[11px] font-black text-[#7C9B93]">{idx + 1}</span>
+                        <button onClick={() => setContributionDraft((prev) => prev.filter((_, i) => i !== idx))} className="p-2 text-red-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-muted ml-1">Judul Singkat</label>
+                            <input value={c.title} onChange={(e) => setContributionDraft((prev) => prev.map((x, i) => i === idx ? { ...x, title: e.target.value } : x))} className="w-full rounded-xl px-3 py-2.5 text-[12px] font-black uppercase border border-[#7C9B93]/15 bg-[#F8FAFA]" placeholder="Contoh: Pengurangan Limbah" />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-muted ml-1">Nilai/Jumlah</label>
+                            <input value={c.value} onChange={(e) => setContributionDraft((prev) => prev.map((x, i) => i === idx ? { ...x, value: e.target.value } : x))} className="w-full rounded-xl px-3 py-2.5 text-[12px] font-black border border-[#7C9B93]/15 bg-[#F8FAFA]" placeholder="Contoh: 40 kg" />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black uppercase tracking-widest text-muted ml-1">Deskripsi Dampak</label>
+                          <textarea value={c.description} onChange={(e) => setContributionDraft((prev) => prev.map((x, i) => i === idx ? { ...x, description: e.target.value } : x))} rows={2} className="w-full rounded-xl px-3 py-2.5 text-[12px] font-medium border border-[#7C9B93]/15 bg-[#F8FAFA]" placeholder="Jelaskan dampak dari capaian ini..." />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {contributionDraft.length > 0 && (
+                  <button onClick={saveAdminContributionDraft} className="w-full md:w-auto px-8 py-4 rounded-2xl bg-[#7C9B93] text-white text-[11px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">
+                    Update Kontribusi Project
+                  </button>
+                )}
+              </div>
+            )}
+
+            {adminTab === 'setting' && (
+              <div className="clay-card p-8 md:p-10 space-y-8 text-center max-w-2xl mx-auto">
+                <div className="inline-flex p-5 rounded-3xl bg-red-50 text-red-400 mb-2">
+                  <AlertTriangle size={40} />
+                </div>
+                <div className="space-y-3">
+                  <h3 className="text-[18px] font-black uppercase tracking-widest text-main">Pusat Kendali Data</h3>
+                  <p className="text-[13px] font-medium text-muted">Berhati-hatilah saat melakukan reset data. Tindakan ini akan menghapus seluruh update profil dan transaksi manual yang telah Anda buat untuk project <span className="font-black text-main">{managedProject}</span>.</p>
+                </div>
+                <div className="pt-4 flex flex-col md:flex-row items-center justify-center gap-4">
+                  <button onClick={resetProjectData} className="w-full md:w-auto px-8 py-4 rounded-2xl border-2 border-red-100 text-red-400 text-[11px] font-black uppercase tracking-widest hover:bg-red-50 transition-colors">
+                    Reset Seluruh Data Project
+                  </button>
+                  <button onClick={() => setAdminTab('profil')} className="w-full md:w-auto px-8 py-4 rounded-2xl bg-[#F8FAFA] text-main text-[11px] font-black uppercase tracking-widest">
+                    Batalkan & Kembali
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+
+        <div className="fixed bottom-0 left-0 w-full bg-white/80 backdrop-blur-xl border-t border-[#7C9B93]/10 z-[60] md:hidden">
+          <div className="flex justify-around items-center p-2">
+            {(['profil', 'keuangan', 'kontribusi', 'setting'] as const).map((tab) => {
+              const Icon = { profil: Layout, keuangan: Wallet, kontribusi: Heart, setting: Settings }[tab];
+              const isActive = adminTab === tab;
+              return (
+                <button key={tab} onClick={() => setAdminTab(tab)} className={`flex flex-col items-center p-3 gap-1 transition-all ${isActive ? 'text-[#7C9B93]' : 'text-muted'}`}>
+                  <Icon size={20} className={isActive ? 'scale-110' : ''} />
+                  <span className="text-[8px] font-black uppercase tracking-tighter">{tab}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {transactionModalJSX}
+        {toastJSX}
       </div>
     );
   }
@@ -2097,79 +2933,8 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {isTxModalOpen && canEditCurrentProject && (
-        <div className="fixed inset-0 z-[90] bg-black/25 backdrop-blur-[1px] flex items-center justify-center p-4">
-          <div className="clay-card w-full max-w-xl p-6 md:p-8 rounded-[16px]">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[14px] font-black uppercase tracking-widest text-main">
-                {txModalMode === 'create' ? 'Tambah Transaksi' : 'Edit Transaksi'}
-              </h3>
-              <button onClick={() => setIsTxModalOpen(false)} className="text-muted">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <input
-                type="date"
-                value={manualDraft.date}
-                onChange={(e) => updateManualDraftField('date', e.target.value)}
-                className="w-full rounded-[16px] px-4 py-3 text-[12px] font-semibold text-main bg-transparent border border-[#7C9B93]/20 outline-none"
-              />
-              <select
-                value={manualDraft.type}
-                onChange={(e) => updateManualDraftField('type', e.target.value as 'Masuk' | 'Keluar' | 'Tabungan')}
-                className="w-full rounded-[16px] px-4 py-3 text-[12px] font-semibold text-main bg-transparent border border-[#7C9B93]/20 outline-none"
-              >
-                <option value="Masuk">Masuk</option>
-                <option value="Keluar">Keluar</option>
-                <option value="Tabungan">Tabungan</option>
-              </select>
-              <input
-                value={manualDraft.description}
-                onChange={(e) => updateManualDraftField('description', e.target.value)}
-                placeholder="Uraian transaksi"
-                className="w-full rounded-[16px] px-4 py-3 text-[12px] font-semibold text-main bg-transparent border border-[#7C9B93]/20 outline-none"
-              />
-              <input
-                value={manualDraft.amountInput}
-                onChange={(e) => updateManualDraftField('amountInput', e.target.value)}
-                placeholder="Jumlah (Rp)"
-                className="w-full rounded-[16px] px-4 py-3 text-[12px] font-semibold text-main bg-transparent border border-[#7C9B93]/20 outline-none"
-              />
-              <input
-                value={manualDraft.category}
-                onChange={(e) => updateManualDraftField('category', e.target.value)}
-                placeholder="Kategori (contoh: Donasi, Operasional, Tabungan)"
-                className="w-full rounded-[16px] px-4 py-3 text-[12px] font-semibold text-main bg-transparent border border-[#7C9B93]/20 outline-none"
-              />
-              <input
-                value={manualDraft.note}
-                onChange={(e) => updateManualDraftField('note', e.target.value)}
-                placeholder="Keterangan (opsional)"
-                className="w-full rounded-[16px] px-4 py-3 text-[12px] font-semibold text-main bg-transparent border border-[#7C9B93]/20 outline-none"
-              />
-            </div>
-            {txValidationError && <p className="mt-3 text-[11px] font-black text-[#A68B8B]">{txValidationError}</p>}
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button onClick={() => saveTransactionDraft(false)} className="px-4 py-2 rounded-[16px] bg-[#7C9B93] text-white text-[10px] font-black uppercase tracking-widest">
-                Simpan
-              </button>
-              <button onClick={() => saveTransactionDraft(true)} className="px-4 py-2 rounded-[16px] bg-[#7C9B93]/85 text-white text-[10px] font-black uppercase tracking-widest">
-                Simpan & Tambah Lagi
-              </button>
-              <button onClick={() => setIsTxModalOpen(false)} className="clay-button !px-4 !py-2 !rounded-[16px] text-[10px] font-black uppercase !tracking-widest !text-[#A68B8B]">
-                Batal
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {toast && (
-        <div className="fixed top-6 right-6 z-[95] px-4 py-3 rounded-[16px] shadow-lg bg-white border border-[#7C9B93]/20 text-[11px] font-black uppercase tracking-widest text-[#7C9B93]">
-          {toast.message}
-        </div>
-      )}
+      {transactionModalJSX}
+      {toastJSX}
 
       <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 md:hidden w-[90%]">
         <div
