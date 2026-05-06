@@ -79,17 +79,13 @@ type ProjectKey = Exclude<ProjectType, 'Semua'>;
 type ProjectProfile = ProjectData['profile'];
 
 const PROJECT_KEYS: ProjectKey[] = ['Resik', 'Hadeyya', 'Siyar', 'Haru'];
+const PROFILE_PROJECTS: ProjectType[] = ['Semua', ...PROJECT_KEYS];
+const ADMIN_ACCOUNTS: Array<{ username: string; password: string; project: ProjectKey | 'all' }> = [];
 const PROFILE_STORAGE_KEY = 'ummahat_profiles_v1';
 const MANUAL_REPORT_STORAGE_KEY = 'ummahat_manual_reports_v1';
 const VOLUNTEER_STORAGE_KEY = 'ummahat_volunteer_apply_v1';
-
-const ADMIN_ACCOUNTS: Array<{ username: string; password: string; project: ProjectKey | 'all' }> = [
-  { username: 'resik.admin', password: 'resik123', project: 'Resik' },
-  { username: 'hadeyya.admin', password: 'hadeyya123', project: 'Hadeyya' },
-  { username: 'siyar.admin', password: 'siyar123', project: 'Siyar' },
-  { username: 'haru.admin', password: 'haru123', project: 'Haru' },
-  { username: 'superadmin', password: 'ummahat2026', project: 'all' }
-];
+const ADMIN_OTP_PENDING_KEY = 'ummahat_admin_otp_pending_v1';
+const ADMIN_OTP_PENDING_MS = 5 * 60 * 1000;
 
 const cloneProfile = (profile: ProjectProfile): ProjectProfile => JSON.parse(JSON.stringify(profile));
 const LEGACY_RESIK_TEAM_NAMES = new Set(['Ummu Nabila', 'Ummu Aisha', 'Ummu Safa', 'Kak Ratna Wulan', 'Kak Rini', 'Bu Nyai']);
@@ -111,6 +107,38 @@ type ManualReportDraft = {
   amountInput: string;
   category: string;
   note: string;
+};
+
+type PdfImportRow = ManualReportRow & {
+  selected: boolean;
+  sourceLine: string;
+  balance: number;
+  weightKg: number | null;
+  confidence: number;
+  status: 'valid' | 'perlu_review';
+  reviewAcknowledged: boolean;
+};
+
+type PdfImportSummary = {
+  total_rows_detected: number;
+  valid_transactions: number;
+  need_review: number;
+  ignored_rows: number;
+};
+
+type PdfIgnoredRow = {
+  raw_text: string;
+  reason: string;
+};
+
+type AdminActivityLog = {
+  id: string;
+  actor_email: string;
+  project: string;
+  action: string;
+  description: string;
+  metadata?: Record<string, any> | null;
+  created_at: string;
 };
 
 type VolunteerApply = {
@@ -177,6 +205,52 @@ const parseRupiahInput = (raw: string): number => {
 };
 
 const formatRupiah = (value: number): string => `Rp ${Math.max(0, Math.round(value)).toLocaleString('id-ID')}`;
+
+const parsePdfAmount = (raw: string): number => {
+  const cleaned = raw.replace(/[^\d.,-]/g, '');
+  const withoutDecimal =
+    /,\d{2}$/.test(cleaned) ? cleaned.replace(/,\d{2}$/, '') :
+    /\.\d{2}$/.test(cleaned) ? cleaned.replace(/\.\d{2}$/, '') :
+    cleaned;
+  return parseRupiahInput(withoutDecimal);
+};
+
+const normalizePdfDate = (raw: string): string => {
+  const parts = raw.split(/[./-]/).map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return '';
+  const isValid = (year: number, month: number, day: number) => {
+    if (year < 2000 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+    const date = new Date(year, month - 1, day);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+  };
+  if (parts[0] > 1900) {
+    return isValid(parts[0], parts[1], parts[2])
+      ? `${parts[0]}-${String(parts[1]).padStart(2, '0')}-${String(parts[2]).padStart(2, '0')}`
+      : '';
+  }
+  const year = parts[2] < 100 ? 2000 + parts[2] : parts[2];
+  return isValid(year, parts[1], parts[0])
+    ? `${year}-${String(parts[1]).padStart(2, '0')}-${String(parts[0]).padStart(2, '0')}`
+    : '';
+};
+
+const isValidDateInput = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+};
+
+const cleanPdfDescription = (value: string): string => {
+  return value
+    .replace(/\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?\b/g, ' ')
+    .replace(/\b\d+(?:[.,]\d+)?\s*(kg|gr|g|pcs|pc|buah|lembar|unit)\b/gi, ' ')
+    .replace(/\b(kg|gr|g|pcs|pc|buah|lembar|unit)\s+\d+\b/gi, '$1')
+    .replace(/\b\d+\s*:\s*\d+\b/g, ' ')
+    .replace(/\b\d+\b$/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
 
 const ProjectIcons: Record<string, any> = {
   'Semua': LayoutDashboard,
@@ -934,13 +1008,13 @@ const App: React.FC = () => {
     return window.location.pathname === '/admin' ? 'admin' : 'dashboard';
   });
   const [activeProject, setActiveProject] = useState<ProjectType>('Semua');
-  const [editableProfiles, setEditableProfiles] = useState<Record<ProjectKey, ProjectProfile>>(() => {
+  const [editableProfiles, setEditableProfiles] = useState<Record<ProjectType, ProjectProfile>>(() => {
     const defaults = getDefaultProfiles();
     try {
       const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
       if (!raw) return defaults;
-      const parsed = JSON.parse(raw) as Partial<Record<ProjectKey, ProjectProfile>>;
-      PROJECT_KEYS.forEach((key) => {
+      const parsed = JSON.parse(raw) as Partial<Record<ProjectType, ProjectProfile>>;
+      PROFILE_PROJECTS.forEach((key) => {
         if (parsed[key]) {
           defaults[key] = { ...defaults[key], ...parsed[key] };
         }
@@ -1000,7 +1074,9 @@ const App: React.FC = () => {
   } | null>(null);
   const [adminSession, setAdminSession] = useState<{ username: string; project: ProjectKey | 'all' } | null>(null);
   const [adminUsername, setAdminUsername] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
+  const [adminPasscode, setAdminPasscode] = useState('');
+  const [isAdminSubmitting, setIsAdminSubmitting] = useState(false);
+  const [isPasscodeSent, setIsPasscodeSent] = useState(false);
   const [adminLoginError, setAdminLoginError] = useState('');
   const [adminNotice, setAdminNotice] = useState('');
   const [manualDraft, setManualDraft] = useState<ManualReportDraft>(createEmptyManualDraft());
@@ -1010,8 +1086,20 @@ const App: React.FC = () => {
   const [txValidationError, setTxValidationError] = useState('');
   const [txPage, setTxPage] = useState(1);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [pdfImportRows, setPdfImportRows] = useState<PdfImportRow[]>([]);
+  const [isPdfImportOpen, setIsPdfImportOpen] = useState(false);
+  const [isPdfParsing, setIsPdfParsing] = useState(false);
+  const [pdfImportError, setPdfImportError] = useState('');
+  const [pdfSourceName, setPdfSourceName] = useState('');
+  const [pdfImportId, setPdfImportId] = useState<string | null>(null);
+  const [pdfImportSummary, setPdfImportSummary] = useState<PdfImportSummary | null>(null);
+  const [pdfIgnoredRows, setPdfIgnoredRows] = useState<PdfIgnoredRow[]>([]);
+  const [pdfImportWarnings, setPdfImportWarnings] = useState<string[]>([]);
+  const [isPdfApproving, setIsPdfApproving] = useState(false);
+  const pdfFileInputRef = useRef<HTMLInputElement>(null);
   const [user, setUser] = useState<any>(null);
   const [adminRoles, setAdminRoles] = useState<Array<{ email: string, project: string }>>([]);
+  const [adminActivityLogs, setAdminActivityLogs] = useState<AdminActivityLog[]>([]);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminProject, setNewAdminProject] = useState<ProjectKey | 'all'>('Resik');
@@ -1029,6 +1117,31 @@ const App: React.FC = () => {
       return defaults;
     }
   });
+  const loggedLoginEmailsRef = useRef<Set<string>>(new Set());
+
+  const readPendingAdminOtp = () => {
+    try {
+      const raw = sessionStorage.getItem(ADMIN_OTP_PENDING_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as { email?: string; sentAt?: number };
+      if (!parsed.email || !parsed.sentAt) return null;
+      if (Date.now() - parsed.sentAt > ADMIN_OTP_PENDING_MS) {
+        sessionStorage.removeItem(ADMIN_OTP_PENDING_KEY);
+        return null;
+      }
+      return { email: parsed.email, sentAt: parsed.sentAt };
+    } catch {
+      return null;
+    }
+  };
+
+  const rememberPendingAdminOtp = (email: string) => {
+    sessionStorage.setItem(ADMIN_OTP_PENDING_KEY, JSON.stringify({ email, sentAt: Date.now() }));
+  };
+
+  const clearPendingAdminOtp = () => {
+    sessionStorage.removeItem(ADMIN_OTP_PENDING_KEY);
+  };
 
   // Supabase Data Fetching
   useEffect(() => {
@@ -1039,8 +1152,8 @@ const App: React.FC = () => {
           setEditableProfiles(prev => {
             const next = { ...prev };
             profiles.forEach(p => {
-              if (PROJECT_KEYS.includes(p.project_key as ProjectKey)) {
-                next[p.project_key as ProjectKey] = {
+              if (PROFILE_PROJECTS.includes(p.project_key as ProjectType)) {
+                next[p.project_key as ProjectType] = {
                   vision: p.vision || '',
                   missions: p.missions || [],
                   agenda: p.agenda || [],
@@ -1115,6 +1228,13 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const pending = readPendingAdminOtp();
+    if (!pending) return;
+    setAdminUsername(pending.email);
+    setIsPasscodeSent(true);
+  }, []);
+
   const handleUserSession = async (user: any) => {
     setUser(user);
     if (user) {
@@ -1131,8 +1251,25 @@ const App: React.FC = () => {
       } else {
         setAdminSession({ username: user.user_metadata.full_name || user.email, project: roleData.project });
         setAdminTargetProject(roleData.project === 'all' ? 'Resik' : roleData.project);
+        const loginEmail = String(user.email || '').toLowerCase();
+        if (loginEmail && !loggedLoginEmailsRef.current.has(loginEmail)) {
+          loggedLoginEmailsRef.current.add(loginEmail);
+          supabase.from('admin_activity_logs').insert({
+            actor_email: loginEmail,
+            project: roleData.project,
+            action: 'login',
+            description: `Login admin sebagai ${roleData.project === 'all' ? 'superadmin' : roleData.project}.`,
+            metadata: {
+              provider: user.app_metadata?.provider || 'unknown',
+              name: user.user_metadata?.full_name || null
+            }
+          }).then(({ error }) => {
+            if (error) console.error('Supabase error saving login log:', error);
+          });
+        }
         if (roleData.project === 'all') {
           fetchAdminRoles();
+          fetchAdminActivityLogs();
         }
       }
     } else {
@@ -1146,14 +1283,48 @@ const App: React.FC = () => {
     if (data) setAdminRoles(data);
   };
 
+  const fetchAdminActivityLogs = async () => {
+    const { data, error } = await supabase
+      .from('admin_activity_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(80);
+    if (!error && data) setAdminActivityLogs(data as AdminActivityLog[]);
+  };
+
+  const logAdminActivity = async (
+    action: string,
+    description: string,
+    metadata: Record<string, any> = {},
+    projectOverride?: ProjectType | ProjectKey | 'all'
+  ) => {
+    const actorEmail = (user?.email || adminUsername || '').toLowerCase();
+    if (!actorEmail) return;
+    const project = String(projectOverride || managedProject || adminSession?.project || 'Semua');
+    const { error } = await supabase.from('admin_activity_logs').insert({
+      actor_email: actorEmail,
+      project,
+      action,
+      description,
+      metadata
+    });
+    if (error) {
+      console.error('Supabase error saving activity log:', error);
+      return;
+    }
+    if (adminSession?.project === 'all') fetchAdminActivityLogs();
+  };
+
   const addAdminRole = async () => {
     if (!newAdminEmail.trim()) return;
+    const email = newAdminEmail.trim().toLowerCase();
     const { error } = await supabase.from('admin_roles').insert({
-      email: newAdminEmail.trim().toLowerCase(),
+      email,
       project: newAdminProject
     });
     if (!error) {
       showToast('Admin berhasil ditambahkan');
+      logAdminActivity('admin_role_added', `Menambahkan admin ${email} untuk project ${newAdminProject}.`, { email, project: newAdminProject }, 'all');
       setNewAdminEmail('');
       fetchAdminRoles();
     } else {
@@ -1170,8 +1341,72 @@ const App: React.FC = () => {
     const { error } = await supabase.from('admin_roles').delete().eq('email', email);
     if (!error) {
       showToast('Akses dihapus');
+      logAdminActivity('admin_role_deleted', `Menghapus akses admin ${email}.`, { email }, 'all');
       fetchAdminRoles();
     }
+  };
+
+  const getAdminEmailInput = () => adminUsername.trim().toLowerCase();
+
+  const handleSendAdminPasscode = async () => {
+    const email = getAdminEmailInput();
+    if (!email) {
+      setAdminLoginError('Isi email terlebih dahulu untuk menerima kode.');
+      return;
+    }
+
+    setIsAdminSubmitting(true);
+    setAdminLoginError('');
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: window.location.origin + '/admin'
+      }
+    });
+    setIsAdminSubmitting(false);
+
+    if (error) {
+      const pending = readPendingAdminOtp();
+      if (pending?.email === email) {
+        setIsPasscodeSent(true);
+      }
+      setAdminLoginError(error.message);
+      return;
+    }
+
+    rememberPendingAdminOtp(email);
+    setIsPasscodeSent(true);
+    setAdminPasscode('');
+    showToast('Kode masuk dikirim ke email.');
+  };
+
+  const handleVerifyAdminPasscode = async () => {
+    const email = getAdminEmailInput();
+    if (!email) {
+      setAdminLoginError('Isi email terlebih dahulu.');
+      return;
+    }
+    if (!/^\d{6}$/.test(adminPasscode)) {
+      setAdminLoginError('Kode passcode harus 6 angka.');
+      return;
+    }
+
+    setIsAdminSubmitting(true);
+    setAdminLoginError('');
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token: adminPasscode,
+      type: 'email'
+    });
+    setIsAdminSubmitting(false);
+
+    if (error) {
+      setAdminLoginError(error.message);
+      return;
+    }
+
+    clearPendingAdminOtp();
   };
 
   const handleGoogleLogin = async () => {
@@ -1530,8 +1765,8 @@ const App: React.FC = () => {
   const canEditCurrentProject = Boolean(
     viewMode === 'admin' &&
     adminSession &&
-    currentProjectKey &&
-    (adminSession.project === 'all' || adminSession.project === currentProjectKey)
+    managedProject !== 'Semua' &&
+    (adminSession.project === 'all' || adminSession.project === managedProject)
   );
 
   const filteredTransactions = currentData.transactions.filter(t => {
@@ -1572,6 +1807,12 @@ const App: React.FC = () => {
   useEffect(() => {
     if (txPage > totalPages) setTxPage(totalPages);
   }, [txPage, totalPages]);
+
+  useEffect(() => {
+    if (managedProject === 'Semua' && adminTab === 'kontribusi') {
+      setAdminTab('profil');
+    }
+  }, [managedProject, adminTab]);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -1618,6 +1859,325 @@ const App: React.FC = () => {
     if (!manualDraft.date) return 'Tanggal wajib diisi.';
     if (manualDraft.category.trim().length < 2) return 'Kategori minimal 2 karakter.';
     return null;
+  };
+
+  const extractPdfText = async (file: File) => {
+    const [pdfjsLib, workerModule] = await Promise.all([
+      import('pdfjs-dist'),
+      import('pdfjs-dist/build/pdf.worker.mjs?url')
+    ]);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerModule.default;
+
+    const data = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data }).promise;
+    const pages: string[] = [];
+
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent();
+      const text = content.items
+        .map((item: any) => ('str' in item ? item.str : ''))
+        .filter(Boolean)
+        .join(' ');
+      pages.push(text);
+    }
+
+    return pages.join('\n');
+  };
+
+  const guessTransactionType = (line: string): ManualReportRow['type'] => {
+    const lower = line.toLowerCase();
+    if (/(tabungan|simpan|saving)/.test(lower)) return 'Tabungan';
+    if (/(masuk|kredit|credit|cr\b|pemasukan|donasi|infaq|infak|transfer masuk)/.test(lower)) return 'Masuk';
+    if (/(keluar|debit|db\b|pengeluaran|bayar|pembayaran|operasional|transfer keluar)/.test(lower)) return 'Keluar';
+    if (/[+-]\s*(rp\s*)?\d/.test(lower)) return lower.includes('-') ? 'Keluar' : 'Masuk';
+    return 'Masuk';
+  };
+
+  const guessTransactionCategory = (line: string, type: ManualReportRow['type']) => {
+    const lower = line.toLowerCase();
+    if (type === 'Tabungan') return 'Tabungan';
+    if (/(donasi|infaq|infak|sedekah)/.test(lower)) return 'Donasi';
+    if (/(operasional|transport|konsumsi|atk|bayar|pembayaran)/.test(lower)) return 'Operasional';
+    if (/(transfer|tf)/.test(lower)) return 'Transfer';
+    return type === 'Masuk' ? 'Pemasukan' : 'Pengeluaran';
+  };
+
+  const parsePdfTransactions = (text: string, sourceName: string): PdfImportRow[] => {
+    const datePattern = /(\d{4}[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/;
+    const amountPattern = /(?:rp\s*)?[+-]?\d[\d.,]{3,}/gi;
+
+    return text
+      .split(/\n|(?=\d{1,2}[./-]\d{1,2}[./-]\d{2,4})|(?=\d{4}[./-]\d{1,2}[./-]\d{1,2})/)
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+      .filter((line) => datePattern.test(line))
+      .map((line) => {
+        const dateMatch = line.match(datePattern);
+        const amounts = Array.from(line.matchAll(amountPattern)).map((m) => m[0]);
+        const isLikelyTableRow = /^\d+\s+/.test(line);
+        const tableAmounts = amounts.map(parsePdfAmount).filter((amount) => amount > 0);
+        const tableHasExpenseHint = /(cinta guru|taawun|bbm|bersih|sampah|banner|poster|pembelian|bayar|pengeluaran)/i.test(line);
+        const tableType: ManualReportRow['type'] =
+          isLikelyTableRow && tableAmounts.length >= 2 && tableHasExpenseHint ? 'Keluar' : 'Masuk';
+        const fallbackType = guessTransactionType(line);
+        const type = isLikelyTableRow && tableAmounts.length >= 2 ? tableType : fallbackType;
+        const amountRaw =
+          isLikelyTableRow && tableAmounts.length >= 2
+            ? String(type === 'Keluar' ? tableAmounts[tableAmounts.length - 2] : tableAmounts[0])
+            : (amounts[amounts.length - 1] || '');
+        const amount = parsePdfAmount(amountRaw);
+        const balance =
+          isLikelyTableRow && tableAmounts.length >= 2
+            ? tableAmounts[tableAmounts.length - 1]
+            : 0;
+        const description = cleanPdfDescription(line
+          .replace(/^\d+\s+/, '')
+          .replace(datePattern, '')
+          .replace(amountPattern, ' ')
+          .replace(/\b(masuk|keluar|tabungan|kredit|debit|credit|cr|db)\b/gi, '')
+          .replace(/[|:;-]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim());
+        const note = sourceName ? `Import PDF: ${sourceName}` : 'Import PDF';
+
+        return {
+          id: crypto.randomUUID(),
+          selected: true,
+          sourceLine: line,
+          date: normalizePdfDate(dateMatch?.[0] || ''),
+          type,
+          description: description || 'Transaksi dari PDF',
+          amount,
+          balance,
+          category: guessTransactionCategory(line, type),
+          note,
+          weightKg: null,
+          confidence: 0.6,
+          status: !normalizePdfDate(dateMatch?.[0] || '') || amount <= 0 ? 'perlu_review' : 'valid',
+          reviewAcknowledged: false
+        };
+      })
+      .filter((row) => row.amount > 0);
+  };
+
+  const mapGeminiTypeToManualType = (jenis: string): ManualReportRow['type'] => {
+    return jenis === 'pengeluaran' ? 'Keluar' : 'Masuk';
+  };
+
+  const mapGeminiTransactionsToRows = (transactions: any[], fileName: string): PdfImportRow[] => {
+    return transactions.map((tx, index) => {
+      const type = mapGeminiTypeToManualType(String(tx.jenis || '').toLowerCase());
+      const status = tx.status === 'perlu_review' ? 'perlu_review' : 'valid';
+      const date = typeof tx.tanggal === 'string' ? tx.tanggal : '';
+      const amount = Number(tx.nominal || 0);
+      const weightKg = tx.berat_kg === null || tx.berat_kg === undefined || tx.berat_kg === ''
+        ? null
+        : Number(tx.berat_kg);
+
+      return {
+        id: crypto.randomUUID(),
+        selected: status === 'valid',
+        sourceLine: tx.raw_text || '',
+        date,
+        type,
+        description: String(tx.uraian || '').trim(),
+        amount: Number.isFinite(amount) ? amount : 0,
+        balance: 0,
+        category: type === 'Masuk' ? 'Pemasukan' : 'Pengeluaran',
+        note: String(tx.catatan || `Import dari PDF: ${fileName}`).trim(),
+        weightKg: Number.isFinite(weightKg as number) ? weightKg : null,
+        confidence: typeof tx.confidence === 'number' ? tx.confidence : 0,
+        status,
+        reviewAcknowledged: status === 'valid',
+      };
+    });
+  };
+
+  const handlePdfImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (managedProject === 'Semua') {
+      showToast('Pilih project tertentu sebelum import PDF.', 'error');
+      return;
+    }
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      showToast('File harus berupa PDF.', 'error');
+      return;
+    }
+
+    setIsPdfParsing(true);
+    setPdfImportError('');
+    setPdfSourceName(file.name);
+    setPdfImportId(null);
+    setPdfImportSummary(null);
+    setPdfIgnoredRows([]);
+    setPdfImportWarnings([]);
+    try {
+      const text = await extractPdfText(file);
+      if (!text.trim()) {
+        setPdfImportRows([]);
+        setPdfImportError('PDF tidak berisi teks yang bisa dibaca. Gunakan PDF teks, bukan scan gambar.');
+        setIsPdfImportOpen(true);
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('financial-pdf-import', {
+        body: {
+          action: 'parse',
+          project: managedProject,
+          fileName: file.name,
+          text
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const result = data?.result;
+      const rows = mapGeminiTransactionsToRows(result?.transactions || [], file.name);
+      if (!rows.length) {
+        setPdfImportRows([]);
+        setPdfImportId(data?.importId || null);
+        setPdfImportSummary(result?.summary || null);
+        setPdfIgnoredRows(result?.ignored_rows || []);
+        setPdfImportWarnings(result?.warnings || []);
+        setPdfImportError('Sistem tidak menemukan transaksi valid. Periksa baris yang diabaikan atau input manual.');
+        setIsPdfImportOpen(true);
+        return;
+      }
+      setPdfImportId(data?.importId || null);
+      setPdfImportSummary(result?.summary || null);
+      setPdfIgnoredRows(result?.ignored_rows || []);
+      setPdfImportWarnings(result?.warnings || []);
+      setPdfImportRows(rows);
+      setIsPdfImportOpen(true);
+    } catch (err) {
+      console.error('PDF import failed:', err);
+      setPdfImportRows([]);
+      setPdfImportError(err instanceof Error ? err.message : 'Gagal membaca PDF. Coba gunakan PDF teks atau input manual.');
+      setIsPdfImportOpen(true);
+    } finally {
+      setIsPdfParsing(false);
+    }
+  };
+
+  const updatePdfImportRow = (id: string | number, field: keyof PdfImportRow, value: string | boolean) => {
+    setPdfImportRows((prev) => prev.map((row) => {
+      if (row.id !== id) return row;
+      if (field === 'amount') return { ...row, amount: parseRupiahInput(String(value)) };
+      if (field === 'balance') return { ...row, balance: parseRupiahInput(String(value)) };
+      if (field === 'weightKg') {
+        const normalized = String(value).replace(',', '.').trim();
+        const weightKg = normalized ? Number(normalized) : null;
+        return { ...row, weightKg: Number.isFinite(weightKg as number) ? weightKg : null };
+      }
+      if (field === 'selected') {
+        return {
+          ...row,
+          selected: Boolean(value),
+          reviewAcknowledged: Boolean(value) ? true : row.reviewAcknowledged
+        };
+      }
+      return { ...row, [field]: value };
+    }));
+  };
+
+  const removePdfImportRow = (id: string | number) => {
+    setPdfImportRows((prev) => prev.filter((row) => row.id !== id));
+  };
+
+  const approvePdfImportRows = async () => {
+    if (managedProject === 'Semua' || !canEditCurrentProject) return;
+    const selectedRows = pdfImportRows.filter((row) => row.selected);
+    const missingDateRows = selectedRows.filter((row) => !isValidDateInput(row.date));
+    const invalidRows = selectedRows.filter((row) => row.description.trim().length < 3 || row.amount <= 0 || !['Masuk', 'Keluar'].includes(row.type));
+    const unreviewedRows = selectedRows.filter((row) => row.status === 'perlu_review' && !row.reviewAcknowledged);
+
+    if (missingDateRows.length) {
+      setPdfImportError(`${missingDateRows.length} transaksi terpilih belum punya tanggal valid. Isi tanggal pada kolom merah atau hilangkan centangnya sebelum approve.`);
+      return;
+    }
+
+    if (invalidRows.length) {
+      setPdfImportError('Ada transaksi terpilih yang belum valid. Periksa uraian dan jumlah sebelum approve.');
+      return;
+    }
+
+    if (unreviewedRows.length) {
+      setPdfImportError(`${unreviewedRows.length} transaksi perlu review belum dicentang OK. Koreksi dulu, lalu centang OK sebelum approve.`);
+      return;
+    }
+
+    if (!selectedRows.length) {
+      setPdfImportError('Pilih minimal satu transaksi valid untuk diinput.');
+      return;
+    }
+
+    setIsPdfApproving(true);
+    setPdfImportError('');
+
+    const approvedRows = selectedRows.map((row) => ({
+      id: row.id,
+      tanggal: row.date,
+      jenis: row.type === 'Keluar' ? 'pengeluaran' : 'pemasukan',
+      uraian: row.description.trim(),
+      nominal: row.amount,
+      berat_kg: row.weightKg,
+      catatan: row.note.trim(),
+      confidence: row.confidence,
+      status: row.status,
+      review_acknowledged: row.reviewAcknowledged
+    }));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('financial-pdf-import', {
+        body: {
+          action: 'approve',
+          project: managedProject,
+          importId: pdfImportId,
+          transactions: approvedRows
+        }
+      });
+
+      if (error) throw new Error(error.message);
+      if (!data?.transactions?.length) throw new Error('Tidak ada transaksi yang berhasil disimpan.');
+
+      setManualReportsByProject((prev) => ({
+        ...prev,
+        [managedProject]: [
+          ...(prev[managedProject as ProjectKey] || []),
+          ...data.transactions.map((row: any) => ({
+            id: row.id,
+            date: row.date,
+            type: row.type,
+            description: row.description,
+            amount: row.amount,
+            category: row.category,
+            note: row.note
+          } as ManualReportRow))
+        ]
+      }));
+      setIsPdfImportOpen(false);
+      setPdfImportRows([]);
+      setPdfImportId(null);
+      setPdfImportSummary(null);
+      setPdfIgnoredRows([]);
+      setPdfImportWarnings([]);
+      setPdfImportError('');
+      logAdminActivity(
+        'pdf_import_approved',
+        `Approve import PDF ${pdfSourceName || ''} sebanyak ${data.transactions.length} transaksi.`,
+        { fileName: pdfSourceName, count: data.transactions.length, importId: pdfImportId },
+        managedProject
+      );
+      showToast(`${data.transactions.length} transaksi PDF disetujui dan disimpan.`);
+    } catch (err) {
+      setPdfImportError(err instanceof Error ? err.message : 'Gagal menyimpan transaksi PDF.');
+    } finally {
+      setIsPdfApproving(false);
+    }
   };
 
   const saveTransactionDraft = (keepAdding: boolean) => {
@@ -1671,6 +2231,12 @@ const App: React.FC = () => {
     });
 
     showToast(txModalMode === 'edit' ? 'Transaksi berhasil diperbarui.' : 'Transaksi berhasil ditambahkan.');
+    logAdminActivity(
+      isEdit ? 'transaction_updated' : 'transaction_created',
+      `${isEdit ? 'Mengubah' : 'Menambahkan'} transaksi ${manualDraft.description.trim()} sebesar ${formatRupiah(amount)}.`,
+      { id: nextId, type: manualDraft.type, amount, description: manualDraft.description.trim() },
+      managedProject
+    );
     setTxValidationError('');
     if (keepAdding) {
       setManualDraft((prev) => ({ ...createEmptyManualDraft(), date: prev.date }));
@@ -1693,6 +2259,7 @@ const App: React.FC = () => {
       ...prev,
       [activeProject]: prev[activeProject].filter((tx) => tx.id !== id)
     }));
+    logAdminActivity('transaction_deleted', `Menghapus transaksi ${String(id)}.`, { id }, managedProject);
     showToast('Transaksi berhasil dihapus.');
   };
 
@@ -1710,6 +2277,9 @@ const App: React.FC = () => {
           photo: ''
         }))
     }));
+    logAdminActivity('profile_updated', `Mengubah profil project ${managedProject}.`, {
+      fields: ['vision', 'missions', 'agenda', 'team']
+    }, managedProject);
     showToast('Profil project tersimpan.');
   };
 
@@ -1718,6 +2288,9 @@ const App: React.FC = () => {
       ...p,
       contributions: contributionDraft.filter((c) => c.title.trim() && c.value.trim())
     }));
+    logAdminActivity('contribution_updated', `Mengubah kontribusi project ${managedProject}.`, {
+      count: contributionDraft.filter((c) => c.title.trim() && c.value.trim()).length
+    }, managedProject);
     showToast('Kontribusi tersimpan.');
   };
 
@@ -1778,7 +2351,7 @@ const App: React.FC = () => {
     win.print();
   };
 
-  const updateProjectProfile = (project: ProjectKey, updater: (p: ProjectProfile) => ProjectProfile) => {
+  const updateProjectProfile = (project: ProjectType, updater: (p: ProjectProfile) => ProjectProfile) => {
     setEditableProfiles((prev) => {
       const next = { ...prev, [project]: updater(prev[project]) };
       const profile = next[project];
@@ -1902,7 +2475,7 @@ const App: React.FC = () => {
 
   const handleAdminLogin = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    handleGoogleLogin();
+    handleSendAdminPasscode();
   };
 
   const openDashboard = () => {
@@ -1948,6 +2521,230 @@ const App: React.FC = () => {
     </div>
   ) : null;
 
+  const pdfImportModalJSX = isPdfImportOpen ? (
+    <div className="fixed inset-0 z-[92] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-[#F8FAFA] shadow-2xl border border-[#7C9B93]/20 w-[calc(100vw-2rem)] max-w-7xl max-h-[90vh] overflow-hidden rounded-[24px] flex flex-col">
+        <div className="p-6 border-b border-[#7C9B93]/10 flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-[14px] font-black uppercase tracking-widest text-main">Review Import PDF</h3>
+            <p className="mt-2 text-[11px] font-bold text-muted leading-relaxed">
+              Periksa transaksi dari {pdfSourceName || 'PDF'} sebelum disetujui masuk ke project {managedProject}.
+            </p>
+          </div>
+          <button onClick={() => setIsPdfImportOpen(false)} className="text-muted hover:text-main transition-colors p-1">
+            <X size={20} strokeWidth={2.5} />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-auto overscroll-contain space-y-4">
+          {pdfImportRows.some((row) => row.selected && !isValidDateInput(row.date)) && (
+            <div className="flex items-start gap-2 rounded-2xl bg-[#A68B8B]/10 border border-[#A68B8B]/20 px-4 py-3 text-[#A68B8B]">
+              <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+              <p className="text-[11px] font-black leading-relaxed">
+                Ada {pdfImportRows.filter((row) => row.selected && !isValidDateInput(row.date)).length} transaksi terpilih tanpa tanggal valid. Isi tanggal pada kolom merah atau hilangkan centangnya sebelum approve.
+              </p>
+            </div>
+          )}
+
+          {pdfImportError && (
+            <div className="flex items-start gap-2 rounded-2xl bg-[#A68B8B]/10 border border-[#A68B8B]/20 px-4 py-3 text-[#A68B8B]">
+              <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+              <p className="text-[11px] font-black leading-relaxed">{pdfImportError}</p>
+            </div>
+          )}
+
+          {pdfImportSummary && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: 'Baris Terdeteksi', value: pdfImportSummary.total_rows_detected },
+                { label: 'Transaksi Valid', value: pdfImportSummary.valid_transactions },
+                { label: 'Perlu Review', value: pdfImportSummary.need_review },
+                { label: 'Diabaikan', value: pdfImportSummary.ignored_rows },
+              ].map((item) => (
+                <div key={item.label} className="rounded-2xl bg-white border border-[#7C9B93]/10 px-4 py-3">
+                  <p className="text-[18px] font-black text-main">{item.value}</p>
+                  <p className="mt-1 text-[9px] font-black uppercase tracking-widest text-muted">{item.label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {pdfImportWarnings.length > 0 && (
+            <div className="rounded-2xl bg-[#F6E7C8]/50 border border-[#C5A45E]/25 px-4 py-3 text-[#8A6A1F]">
+              <p className="text-[10px] font-black uppercase tracking-widest">Peringatan Sistem</p>
+              <ul className="mt-2 space-y-1 text-[11px] font-bold leading-relaxed">
+                {pdfImportWarnings.map((warning, index) => (
+                  <li key={`${warning}-${index}`}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {pdfImportRows.length > 0 && (
+            <div className="max-w-full overflow-x-auto overscroll-x-contain [touch-action:pan-x] rounded-2xl border border-[#7C9B93]/10 bg-white">
+              <table className="w-full min-w-[920px] text-left">
+                <thead>
+                  <tr className="bg-[#7C9B93]/5 text-[9px] font-black uppercase tracking-widest text-muted">
+                    <th className="px-3 py-3">No</th>
+                    <th className="px-3 py-3">OK</th>
+                    <th className="px-3 py-3">Tanggal</th>
+                    <th className="px-3 py-3">Jenis</th>
+                    <th className="px-3 py-3">Uraian</th>
+                    <th className="px-3 py-3 text-right">Pemasukan</th>
+                    <th className="px-3 py-3 text-right">Berat KG</th>
+                    <th className="px-3 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#7C9B93]/10">
+                  {pdfImportRows.map((row, index) => (
+                    <tr key={row.id} className={`${!row.selected ? 'opacity-50' : ''} ${row.status === 'perlu_review' ? 'bg-[#F6E7C8]/20' : ''}`}>
+                      <td className="px-3 py-3 align-top text-[11px] font-black text-muted">
+                        {index + 1}
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <input
+                          type="checkbox"
+                          checked={row.selected}
+                          onChange={(e) => updatePdfImportRow(row.id, 'selected', e.target.checked)}
+                          className="w-4 h-4 accent-[#7C9B93]"
+                        />
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <input
+                          type="date"
+                          value={row.date}
+                          onChange={(e) => updatePdfImportRow(row.id, 'date', e.target.value)}
+                          className={`w-[130px] rounded-xl px-3 py-2 text-[11px] font-bold border outline-none ${
+                            isValidDateInput(row.date) ? 'border-[#7C9B93]/15' : 'border-[#A68B8B] bg-[#A68B8B]/5'
+                          }`}
+                        />
+                        {!isValidDateInput(row.date) && (
+                          <p className="mt-1 text-[9px] font-black text-[#A68B8B] uppercase tracking-tight">Tanggal wajib diisi</p>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <div className="relative w-[140px]">
+                          <select
+                            value={row.type === 'Keluar' ? 'Keluar' : 'Masuk'}
+                            onChange={(e) => {
+                              const nextType = e.target.value as 'Masuk' | 'Keluar';
+                              updatePdfImportRow(row.id, 'type', nextType);
+                              updatePdfImportRow(row.id, 'category', nextType === 'Masuk' ? 'Pemasukan' : 'Pengeluaran');
+                            }}
+                            className={`w-full appearance-none rounded-xl px-3 py-2 pr-9 text-[11px] font-black border outline-none shadow-sm transition-colors cursor-pointer ${
+                              row.type === 'Keluar'
+                                ? 'bg-[#EAF2FF] border-[#6E8FBF]/25 text-[#355C91]'
+                                : 'bg-[#EEF7F3] border-[#7C9B93]/25 text-[#4F756B]'
+                            }`}
+                          >
+                            <option value="Masuk">Pemasukan</option>
+                            <option value="Keluar">Pengeluaran</option>
+                          </select>
+                          <ChevronDown
+                            size={14}
+                            strokeWidth={3}
+                            className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 ${
+                              row.type === 'Keluar' ? 'text-[#355C91]' : 'text-[#4F756B]'
+                            }`}
+                          />
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <input
+                          value={row.description}
+                          onChange={(e) => updatePdfImportRow(row.id, 'description', e.target.value)}
+                          className={`w-full min-w-[300px] rounded-xl px-3 py-2 text-[11px] font-bold border outline-none ${
+                            row.description.trim().length >= 3 ? 'border-[#7C9B93]/15' : 'border-[#A68B8B] bg-[#A68B8B]/5'
+                          }`}
+                        />
+                      </td>
+                      <td className="px-3 py-3 align-top text-right">
+                        <input
+                          value={formatRupiah(row.amount)}
+                          onChange={(e) => updatePdfImportRow(row.id, 'amount', e.target.value)}
+                          placeholder="Rp 0"
+                          className={`w-[135px] rounded-xl px-3 py-2 text-[11px] font-bold border outline-none text-right ${
+                            row.amount > 0 ? 'border-[#7C9B93]/15' : 'border-[#A68B8B] bg-[#A68B8B]/5'
+                          }`}
+                        />
+                      </td>
+                      <td className="px-3 py-3 align-top text-right">
+                        <input
+                          value={row.weightKg ?? ''}
+                          onChange={(e) => updatePdfImportRow(row.id, 'weightKg', e.target.value)}
+                          placeholder="-"
+                          className="w-[90px] rounded-xl px-3 py-2 text-[11px] font-bold border border-[#7C9B93]/15 outline-none text-right"
+                        />
+                      </td>
+                      <td className="px-3 py-3 align-top text-right">
+                        <button
+                          type="button"
+                          onClick={() => removePdfImportRow(row.id)}
+                          className="p-2 text-[#A68B8B] hover:bg-[#A68B8B]/10 rounded-lg transition-all"
+                          aria-label="Hapus transaksi dari review"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {pdfIgnoredRows.length > 0 && (
+            <details className="rounded-2xl bg-white border border-[#7C9B93]/10 px-4 py-3">
+              <summary className="cursor-pointer text-[10px] font-black uppercase tracking-widest text-muted">
+                {pdfIgnoredRows.length} baris diabaikan
+              </summary>
+              <div className="mt-3 max-h-40 overflow-y-auto space-y-2">
+                {pdfIgnoredRows.slice(0, 80).map((row, index) => (
+                  <div key={`${row.raw_text}-${index}`} className="rounded-xl bg-[#F8FAFA] px-3 py-2">
+                    <p className="text-[11px] font-bold text-main">{row.raw_text}</p>
+                    <p className="mt-1 text-[10px] font-bold text-muted">{row.reason}</p>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+
+        <div className="p-6 border-t border-[#7C9B93]/10 flex flex-col md:flex-row justify-between gap-3">
+          <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+            {pdfImportRows.filter((row) => row.selected).length} dari {pdfImportRows.length} transaksi dipilih
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setIsPdfImportOpen(false)} className="px-5 py-2.5 rounded-[14px] bg-white border border-[#A68B8B]/20 text-[10px] font-black uppercase tracking-widest text-[#A68B8B] hover:bg-gray-50 transition-colors">Batal</button>
+            <button
+              onClick={approvePdfImportRows}
+              disabled={isPdfApproving || !pdfImportRows.some((row) => row.selected)}
+              className={`px-5 py-2.5 rounded-[14px] text-[10px] font-black uppercase tracking-widest shadow-md transition-colors ${
+                pdfImportRows.some((row) => row.selected && !isValidDateInput(row.date))
+                  ? 'bg-[#A68B8B] text-white hover:bg-[#927575]'
+                  : 'bg-[#7C9B93] text-white hover:bg-[#638079]'
+              } disabled:opacity-60 disabled:cursor-not-allowed`}
+            >
+              {isPdfApproving ? 'Menyimpan...' : 'Approve & Input'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const pdfParsingOverlayJSX = isPdfParsing ? (
+    <div className="fixed inset-0 z-[110] bg-black/45 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-sm rounded-[28px] bg-[#F8FAFA] border border-[#7C9B93]/20 shadow-2xl p-7 text-center">
+        <div className="mx-auto h-12 w-12 rounded-full border-4 border-[#7C9B93]/20 border-t-[#7C9B93] animate-spin" />
+        <h3 className="mt-5 text-[14px] font-black uppercase tracking-widest text-main">Sistem Sedang Membaca Data</h3>
+        <p className="mt-2 text-[11px] font-bold leading-relaxed text-muted">
+          Data laporan sedang diproses menjadi transaksi terstruktur. Jangan tutup halaman ini.
+        </p>
+      </div>
+    </div>
+  ) : null;
+
   const toastJSX = toast ? (
     <div className={`fixed top-6 right-6 z-[95] px-4 py-3 rounded-[16px] shadow-lg bg-white border ${toast.type === 'error' ? 'border-[#A68B8B]/30' : 'border-[#7C9B93]/20'} text-[11px] font-black uppercase tracking-widest ${toast.type === 'error' ? 'text-[#A68B8B]' : 'text-[#7C9B93]'}`}>
       {toast.message}
@@ -1969,9 +2766,47 @@ const App: React.FC = () => {
               <p className="text-[11px] font-bold uppercase tracking-widest text-muted">Akses Khusus Pengelola Project</p>
             </div>
 
+            <form className="space-y-4" onSubmit={handleAdminLogin}>
+              <input
+                type="email"
+                value={adminUsername}
+                onChange={(e) => {
+                  setAdminUsername(e.target.value);
+                  setIsPasscodeSent(false);
+                  setAdminPasscode('');
+                  clearPendingAdminOtp();
+                }}
+                placeholder="Email admin"
+                autoComplete="email"
+                className="w-full rounded-2xl px-4 py-4 text-[13px] font-bold text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm"
+              />
+              <button
+                type="submit"
+                disabled={isAdminSubmitting}
+                className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-[#7C9B93] text-white text-[12px] font-black uppercase tracking-[0.1em] shadow-md hover:bg-[#638079] active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <KeyRound size={18} />
+                {isAdminSubmitting ? 'Mengirim...' : 'Kirim Kode Login'}
+              </button>
+            </form>
+
+            {adminLoginError && (
+              <div className="flex items-start gap-2 rounded-2xl bg-[#A68B8B]/10 border border-[#A68B8B]/20 px-4 py-3 text-[#A68B8B]">
+                <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                <p className="text-[11px] font-black leading-relaxed">{adminLoginError}</p>
+              </div>
+            )}
+
             <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-[#7C9B93]/15" />
+                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-muted">atau</span>
+                <div className="h-px flex-1 bg-[#7C9B93]/15" />
+              </div>
+
               <button 
                 onClick={handleGoogleLogin} 
+                disabled={isAdminSubmitting}
                 className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-white border border-[#7C9B93]/20 text-main text-[12px] font-black uppercase tracking-[0.1em] shadow-md hover:bg-gray-50 active:scale-[0.98] transition-all"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -1994,6 +2829,69 @@ const App: React.FC = () => {
           </div>
           <p className="text-center mt-8 text-[10px] font-black uppercase tracking-[0.2em] text-muted">Project Ummahat &copy; 2026</p>
         </div>
+        {isPasscodeSent && (
+          <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="w-full max-w-sm rounded-[28px] bg-[#F8FAFA] border border-[#7C9B93]/20 shadow-2xl p-6 space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-[15px] font-black uppercase tracking-[0.16em] text-main">Kode Login</h2>
+                  <p className="mt-2 text-[11px] font-bold leading-relaxed text-muted">
+                    Masukkan 6 angka yang dikirim ke {getAdminEmailInput()}.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPasscodeSent(false);
+                    setAdminPasscode('');
+                    setAdminLoginError('');
+                    clearPendingAdminOtp();
+                  }}
+                  className="p-2 rounded-xl text-muted hover:bg-[#7C9B93]/10 hover:text-main transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <input
+                autoFocus
+                value={adminPasscode}
+                onChange={(e) => setAdminPasscode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                inputMode="numeric"
+                maxLength={6}
+                autoComplete="one-time-code"
+                className="w-full rounded-2xl px-4 py-4 text-center text-[24px] font-black tracking-[0.55em] text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm"
+              />
+
+              {adminLoginError && (
+                <div className="flex items-start gap-2 rounded-2xl bg-[#A68B8B]/10 border border-[#A68B8B]/20 px-4 py-3 text-[#A68B8B]">
+                  <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                  <p className="text-[11px] font-black leading-relaxed">{adminLoginError}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleSendAdminPasscode}
+                  disabled={isAdminSubmitting}
+                  className="py-3.5 rounded-2xl bg-white border border-[#7C9B93]/20 text-[#7C9B93] text-[10px] font-black uppercase tracking-widest hover:bg-[#7C9B93]/10 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  Kirim Ulang
+                </button>
+                <button
+                  type="button"
+                  onClick={handleVerifyAdminPasscode}
+                  disabled={isAdminSubmitting}
+                  className="py-3.5 rounded-2xl bg-[#7C9B93] text-white text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-[#638079] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isAdminSubmitting ? 'Cek...' : 'Verifikasi'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -2058,7 +2956,7 @@ const App: React.FC = () => {
             {[
               { id: 'profil', icon: Layout },
               { id: 'keuangan', icon: Wallet },
-              { id: 'kontribusi', icon: Heart },
+              ...(managedProject === 'Semua' ? [] : [{ id: 'kontribusi', icon: Heart }]),
               ...(adminSession.project === 'all' ? [{ id: 'admin_management', icon: ShieldCheck }] : []),
               { id: 'setting', icon: Settings }
             ].map((tab) => {
@@ -2081,7 +2979,7 @@ const App: React.FC = () => {
 
           {/* Content Area */}
           <div className="fade-in-section">
-            {managedProject === 'Semua' && (adminTab === 'profil' || adminTab === 'kontribusi') && (
+            {managedProject === 'Semua' && adminTab === 'profil' && (
               <div className="space-y-8 max-w-4xl mx-auto">
                 <div className="clay-card p-10 md:p-14 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                   <div className="flex flex-col md:flex-row items-center md:items-start gap-8">
@@ -2121,7 +3019,14 @@ const App: React.FC = () => {
 
                         <button 
                           onClick={() => {
-                            localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(editableProfiles));
+                            updateProjectProfile('Semua', (p) => ({
+                              ...p,
+                              vision: editableProfiles.Semua.vision.trim() || p.vision,
+                              missions: editableProfiles.Semua.missions.map((mission) => mission.trim()).filter(Boolean)
+                            }));
+                            logAdminActivity('global_profile_updated', 'Mengubah narasi global Semua Project.', {
+                              fields: ['vision', 'quote']
+                            }, 'Semua');
                             showToast('Narasi global berhasil disimpan.');
                           }}
                           className="px-8 py-4 rounded-2xl bg-[#7C9B93] text-white text-[11px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
@@ -2195,6 +3100,52 @@ const App: React.FC = () => {
                         ))}
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                <div className="clay-card p-8 space-y-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-[#7C9B93]/10 text-[#7C9B93]"><History size={20} /></div>
+                      <div>
+                        <h3 className="text-[14px] font-black uppercase tracking-widest text-main">Log Aktivitas Admin</h3>
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted">Login terakhir dan perubahan yang dilakukan admin</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={fetchAdminActivityLogs}
+                      className="px-4 py-2.5 rounded-xl bg-white border border-[#7C9B93]/15 text-[10px] font-black uppercase tracking-widest text-[#7C9B93] hover:bg-[#7C9B93]/5 transition-colors"
+                    >
+                      Refresh Log
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-[520px] overflow-y-auto pr-2">
+                    {adminActivityLogs.length === 0 ? (
+                      <div className="rounded-2xl bg-white border border-[#7C9B93]/10 p-5 text-[11px] font-bold text-muted">
+                        Belum ada log aktivitas.
+                      </div>
+                    ) : adminActivityLogs.map((log) => (
+                      <div key={log.id} className="rounded-2xl bg-white border border-[#7C9B93]/10 p-4 flex flex-col md:flex-row md:items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[11px] font-black uppercase tracking-widest text-main">{log.action.replaceAll('_', ' ')}</span>
+                            <span className="rounded-full bg-[#7C9B93]/10 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-[#7C9B93]">{log.project}</span>
+                          </div>
+                          <p className="text-[12px] font-bold text-main leading-relaxed">{log.description}</p>
+                          <p className="text-[10px] font-bold text-muted">{log.actor_email}</p>
+                        </div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted whitespace-nowrap">
+                          {new Date(log.created_at).toLocaleString('id-ID', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -2439,9 +3390,25 @@ const App: React.FC = () => {
                         <FileSpreadsheet size={14} /> Export
                       </button>
                       {managedProject !== 'Semua' && (
-                        <button onClick={openCreateTransactionModal} className="flex-1 md:flex-none px-4 py-2.5 rounded-xl bg-[#7C9B93] text-white text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-md">
-                          <Plus size={14} /> Transaksi Baru
-                        </button>
+                        <>
+                          <input
+                            ref={pdfFileInputRef}
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            onChange={handlePdfImportFile}
+                            className="hidden"
+                          />
+                          <button
+                            onClick={() => pdfFileInputRef.current?.click()}
+                            disabled={isPdfParsing}
+                            className="flex-1 md:flex-none px-4 py-2.5 rounded-xl border border-[#7C9B93]/20 text-[10px] font-black uppercase tracking-widest text-[#7C9B93] flex items-center justify-center gap-2 hover:bg-[#7C9B93]/5 disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            <FileText size={14} /> {isPdfParsing ? 'Membaca...' : 'Import PDF'}
+                          </button>
+                          <button onClick={openCreateTransactionModal} className="flex-1 md:flex-none px-4 py-2.5 rounded-xl bg-[#7C9B93] text-white text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-md">
+                            <Plus size={14} /> Transaksi Baru
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -2603,7 +3570,7 @@ const App: React.FC = () => {
 
         <div className="fixed bottom-0 left-0 w-full bg-white/80 backdrop-blur-xl border-t border-[#7C9B93]/10 z-[60] md:hidden">
           <div className="flex justify-around items-center p-2">
-            {(['profil', 'keuangan', 'kontribusi', 'setting'] as const).map((tab) => {
+            {((managedProject === 'Semua' ? ['profil', 'keuangan', 'setting'] : ['profil', 'keuangan', 'kontribusi', 'setting']) as const).map((tab) => {
               const Icon = { profil: Layout, keuangan: Wallet, kontribusi: Heart, setting: Settings }[tab];
               const isActive = adminTab === tab;
               return (
@@ -2617,6 +3584,8 @@ const App: React.FC = () => {
         </div>
 
         {transactionModalJSX}
+        {pdfImportModalJSX}
+        {pdfParsingOverlayJSX}
         {toastJSX}
       </div>
     );
@@ -2934,6 +3903,8 @@ const App: React.FC = () => {
       </div>
 
       {transactionModalJSX}
+      {pdfImportModalJSX}
+      {pdfParsingOverlayJSX}
       {toastJSX}
 
       <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 md:hidden w-[90%]">
