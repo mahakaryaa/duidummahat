@@ -88,6 +88,10 @@ const ADMIN_OTP_PENDING_KEY = 'ummahat_admin_otp_pending_v1';
 const ADMIN_OTP_PENDING_MS = 5 * 60 * 1000;
 
 const cloneProfile = (profile: ProjectProfile): ProjectProfile => JSON.parse(JSON.stringify(profile));
+const withProfileDefaults = (profile: ProjectProfile): ProjectProfile => ({
+  ...profile,
+  joinEnabled: profile.joinEnabled !== false
+});
 const LEGACY_RESIK_TEAM_NAMES = new Set(['Ummu Nabila', 'Ummu Aisha', 'Ummu Safa', 'Kak Ratna Wulan', 'Kak Rini', 'Bu Nyai']);
 
 type ManualReportRow = {
@@ -155,13 +159,14 @@ const getDefaultProfiles = (): Record<ProjectType, ProjectProfile> => ({
     vision: 'Setiap data dan angka yang kami tampilkan di halaman sederhana ini disajikan secara terbuka sebagai bentuk penjagaan amanah. Transparansi ini kami hadirkan sebagai wujud tanggung jawab atas setiap titipan yang dikelola, sebelum semuanya kelak dipertanggungjawabkan di hadapan Allah ta\'ala.',
     missions: ['"Jazakumullahu khairan atas kepercayaan dan infak yang telah dititipkan. Semoga setiap rupiah menjadi amal jariyah yang terus mengalir pahalanya, serta menjadi bagian dari keberkahan bagi generasi yang sedang kita jaga bersama."'],
     agenda: [],
+    joinEnabled: false,
     contributions: [],
     team: []
   },
-  Resik: cloneProfile(PROJECT_DATA.Resik.profile),
-  Hadeyya: cloneProfile(PROJECT_DATA.Hadeyya.profile),
-  Siyar: cloneProfile(PROJECT_DATA.Siyar.profile),
-  Haru: cloneProfile(PROJECT_DATA.Haru.profile)
+  Resik: withProfileDefaults(cloneProfile(PROJECT_DATA.Resik.profile)),
+  Hadeyya: withProfileDefaults(cloneProfile(PROJECT_DATA.Hadeyya.profile)),
+  Siyar: withProfileDefaults(cloneProfile(PROJECT_DATA.Siyar.profile)),
+  Haru: withProfileDefaults(cloneProfile(PROJECT_DATA.Haru.profile))
 });
 
 const createEmptyManualRow = (): ManualReportRow => ({
@@ -418,6 +423,7 @@ const ProjectProfileSection = ({
   onEditMissions,
   onEditTeam,
   onEditAgenda,
+  isJoinEnabled = true,
   isProfileMinimized,
   onToggleProfileMinimize,
   isAgendaMinimized,
@@ -437,6 +443,7 @@ const ProjectProfileSection = ({
   onEditMissions?: () => void;
   onEditTeam?: () => void;
   onEditAgenda?: () => void;
+  isJoinEnabled?: boolean;
   isProfileMinimized: boolean;
   onToggleProfileMinimize: () => void;
   isAgendaMinimized: boolean;
@@ -448,6 +455,8 @@ const ProjectProfileSection = ({
   const [volunteerName, setVolunteerName] = useState('');
   const [volunteerNote, setVolunteerNote] = useState('');
   const [joinMessage, setJoinMessage] = useState('');
+  const themeBorder = `${accentColor}33`;
+  const themeFocusBorder = `${accentColor}73`;
 
   const TeamIdentityIcon = () => (
     <div className="relative w-11 h-11 md:w-12 md:h-12 flex-shrink-0">
@@ -520,7 +529,7 @@ const ProjectProfileSection = ({
                       <h3 className="text-[12px] font-black uppercase tracking-widest text-main">Visi</h3>
                     </div>
                     {isAdminMode && (
-                      <button onClick={onEditVision} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest !text-[#7C9B93]">
+                      <button onClick={onEditVision} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest" style={{ color: accentColor }}>
                         Edit
                       </button>
                     )}
@@ -535,7 +544,7 @@ const ProjectProfileSection = ({
                       <h3 className="text-[12px] font-black uppercase tracking-widest text-main">Misi</h3>
                     </div>
                     {isAdminMode && (
-                      <button onClick={onEditMissions} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest !text-[#7C9B93]">
+                      <button onClick={onEditMissions} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest" style={{ color: accentColor }}>
                         Edit
                       </button>
                     )}
@@ -558,7 +567,7 @@ const ProjectProfileSection = ({
                     <h3 className="text-[12px] font-black uppercase tracking-widest text-main">Our Best Team</h3>
                   </div>
                   {isAdminMode && (
-                    <button onClick={onEditTeam} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest !text-[#7C9B93]">
+                    <button onClick={onEditTeam} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest" style={{ color: accentColor }}>
                       Edit
                     </button>
                   )}
@@ -581,7 +590,7 @@ const ProjectProfileSection = ({
           )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className={`grid grid-cols-1 ${isJoinEnabled ? 'lg:grid-cols-2' : ''} gap-6`}>
           <div className="py-1">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -601,7 +610,7 @@ const ProjectProfileSection = ({
             </div>
             {isAdminMode && !isAgendaMinimized && (
               <div className="mb-3">
-                <button onClick={onEditAgenda} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest !text-[#7C9B93]">
+                <button onClick={onEditAgenda} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest" style={{ color: accentColor }}>
                   Edit Agenda
                 </button>
               </div>
@@ -618,6 +627,7 @@ const ProjectProfileSection = ({
             )}
           </div>
 
+          {isJoinEnabled && (
           <div className="py-1">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -643,13 +653,19 @@ const ProjectProfileSection = ({
                     value={volunteerName}
                     onChange={(e) => setVolunteerName(e.target.value)}
                     placeholder="Nama relawan (opsional)"
-                    className="w-full rounded-2xl px-4 py-3 text-[12px] font-semibold text-main placeholder:text-muted outline-none bg-transparent border border-[#7C9B93]/20 focus:border-[#7C9B93]/45 transition-colors"
+                    className="w-full rounded-2xl px-4 py-3 text-[12px] font-semibold text-main placeholder:text-muted outline-none bg-transparent border transition-colors"
+                    style={{ borderColor: themeBorder }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = themeFocusBorder; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = themeBorder; }}
                   />
                   <input
                     value={volunteerNote}
                     onChange={(e) => setVolunteerNote(e.target.value)}
                     placeholder="Minat/keahlian (opsional)"
-                    className="w-full rounded-2xl px-4 py-3 text-[12px] font-semibold text-main placeholder:text-muted outline-none bg-transparent border border-[#7C9B93]/20 focus:border-[#7C9B93]/45 transition-colors"
+                    className="w-full rounded-2xl px-4 py-3 text-[12px] font-semibold text-main placeholder:text-muted outline-none bg-transparent border transition-colors"
+                    style={{ borderColor: themeBorder }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = themeFocusBorder; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = themeBorder; }}
                   />
                 </div>
 
@@ -662,10 +678,13 @@ const ProjectProfileSection = ({
                         type="button"
                         onClick={() => setCommitmentType(opt)}
                         className={`px-3 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                          commitmentType === opt
-                            ? 'bg-[#7C9B93]/90 text-white'
-                            : 'bg-transparent text-muted border border-[#7C9B93]/20'
+                          commitmentType === opt ? 'text-white' : 'bg-transparent text-muted border'
                         }`}
+                        style={
+                          commitmentType === opt
+                            ? { backgroundColor: accentColor }
+                            : { borderColor: themeBorder }
+                        }
                       >
                         {opt}
                       </button>
@@ -675,17 +694,19 @@ const ProjectProfileSection = ({
 
                 <button
                   type="submit"
-                  className="w-full px-4 py-3 rounded-2xl bg-[#7C9B93]/90 text-white text-[11px] font-black uppercase tracking-[0.14em]"
+                  className="w-full px-4 py-3 rounded-2xl text-white text-[11px] font-black uppercase tracking-[0.14em]"
+                  style={{ backgroundColor: accentColor }}
                 >
                   Kirim Minat Join
                 </button>
 
                 {joinMessage && (
-                  <p className="text-[11px] font-black text-[#7C9B93] leading-relaxed">{joinMessage}</p>
+                  <p className="text-[11px] font-black leading-relaxed" style={{ color: accentColor }}>{joinMessage}</p>
                 )}
               </form>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>
@@ -716,13 +737,8 @@ const ContributionGridSection = ({
       sorted: Trash2,
       utilized: Recycle
     };
-    const colorMap = {
-      reduction: '#7C9B93',
-      sorted: '#A68B8B',
-      utilized: '#718096'
-    };
     const IconComp = iconMap[type];
-    const color = colorMap[type];
+    const color = accentColor;
 
     return (
       <div className={`relative w-14 h-14 contrib-illust contrib-${type}`}>
@@ -764,11 +780,11 @@ const ContributionGridSection = ({
             <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
               <div className="flex flex-col">
                 <span className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-muted">{item.title}</span>
-                <span className="text-[18px] md:text-[26px] font-black text-[#7C9B93] leading-none mt-1">{item.value}</span>
+                <span className="text-[18px] md:text-[26px] font-black leading-none mt-1" style={{ color: accentColor }}>{item.value}</span>
               </div>
               <div className="flex flex-col items-end gap-2">
                 {isAdminMode && (
-                  <button onClick={() => onEditContribution?.(idx)} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest !text-[#7C9B93]">
+                  <button onClick={() => onEditContribution?.(idx)} className="clay-button !px-3 !py-1.5 !rounded-xl text-[9px] font-black uppercase !tracking-widest" style={{ color: accentColor }}>
                     Edit
                   </button>
                 )}
@@ -1016,7 +1032,7 @@ const App: React.FC = () => {
       const parsed = JSON.parse(raw) as Partial<Record<ProjectType, ProjectProfile>>;
       PROFILE_PROJECTS.forEach((key) => {
         if (parsed[key]) {
-          defaults[key] = { ...defaults[key], ...parsed[key] };
+          defaults[key] = withProfileDefaults({ ...defaults[key], ...parsed[key] });
         }
       });
       const activeResikTeam = defaults.Resik.team || [];
@@ -1157,6 +1173,7 @@ const App: React.FC = () => {
                   vision: p.vision || '',
                   missions: p.missions || [],
                   agenda: p.agenda || [],
+                  joinEnabled: p.join_enabled !== false,
                   team: p.team || [],
                   contributions: p.contributions || []
                 };
@@ -1429,10 +1446,11 @@ const App: React.FC = () => {
 
   const [adminTab, setAdminTab] = useState<'profil' | 'keuangan' | 'kontribusi' | 'admin_management'>('profil');
   const [adminTargetProject, setAdminTargetProject] = useState<ProjectType>('Resik');
-  const [profileDraft, setProfileDraft] = useState<{ vision: string; missions: string[]; agenda: string[]; team: Array<{ name: string; role: string }> }>({
+  const [profileDraft, setProfileDraft] = useState<{ vision: string; missions: string[]; agenda: string[]; joinEnabled: boolean; team: Array<{ name: string; role: string }> }>({
     vision: '',
     missions: [],
     agenda: [],
+    joinEnabled: true,
     team: []
   });
   const [contributionDraft, setContributionDraft] = useState<ProjectProfile['contributions']>([]);
@@ -1737,6 +1755,7 @@ const App: React.FC = () => {
       vision: p.vision,
       missions: [...p.missions],
       agenda: [...p.agenda],
+      joinEnabled: p.joinEnabled !== false,
       team: p.team
         .map((t: any) => {
           if (typeof t === 'string') {
@@ -2269,6 +2288,7 @@ const App: React.FC = () => {
       vision: profileDraft.vision.trim() || p.vision,
       missions: profileDraft.missions.map((s) => s.trim()).filter(Boolean),
       agenda: profileDraft.agenda.map((s) => s.trim()).filter(Boolean),
+      joinEnabled: profileDraft.joinEnabled,
       team: profileDraft.team
         .filter(member => member.name?.trim() || member.role?.trim())
         .map((member, idx) => ({
@@ -2278,7 +2298,7 @@ const App: React.FC = () => {
         }))
     }));
     logAdminActivity('profile_updated', `Mengubah profil project ${managedProject}.`, {
-      fields: ['vision', 'missions', 'agenda', 'team']
+      fields: ['vision', 'missions', 'agenda', 'joinEnabled', 'team']
     }, managedProject);
     showToast('Profil project tersimpan.');
   };
@@ -2361,6 +2381,7 @@ const App: React.FC = () => {
         vision: profile.vision,
         missions: profile.missions,
         agenda: profile.agenda,
+        join_enabled: profile.joinEnabled !== false,
         team: profile.team,
         contributions: profile.contributions,
         updated_at: new Date().toISOString()
@@ -3160,6 +3181,38 @@ const App: React.FC = () => {
                       <h3 className="text-[13px] font-black uppercase tracking-widest text-main">Identitas & Narasi</h3>
                     </div>
                     <div className="space-y-6">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-3xl border border-[#7C9B93]/10 bg-[#7C9B93]/5">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-xl bg-white text-[#7C9B93] shadow-sm">
+                            <HandHeart size={18} />
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-black uppercase tracking-widest text-main">Card Join Project</p>
+                            <p className="text-[10px] font-bold text-muted uppercase tracking-wider mt-0.5">
+                              {profileDraft.joinEnabled ? 'Aktif di halaman project' : 'Nonaktif di halaman project'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={profileDraft.joinEnabled}
+                          onClick={() => setProfileDraft((d) => ({ ...d, joinEnabled: !d.joinEnabled }))}
+                          className={`relative w-20 h-10 rounded-full p-1 transition-all ${
+                            profileDraft.joinEnabled ? 'bg-[#7C9B93]' : 'bg-[#D6DEDF]'
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-1 h-8 w-8 rounded-full bg-white shadow-md transition-all ${
+                              profileDraft.joinEnabled ? 'left-11' : 'left-1'
+                            }`}
+                          />
+                          <span className={`absolute inset-y-0 flex items-center text-[8px] font-black uppercase tracking-widest text-white ${profileDraft.joinEnabled ? 'left-3' : 'right-3 text-muted'}`}>
+                            {profileDraft.joinEnabled ? 'On' : 'Off'}
+                          </span>
+                        </button>
+                      </div>
+
                       <div className="space-y-2">
                         <label className="text-[10px] font-black uppercase tracking-widest text-muted ml-1">Visi Project</label>
                         <textarea value={profileDraft.vision} onChange={(e) => setProfileDraft((d) => ({ ...d, vision: e.target.value }))} rows={3} className="w-full rounded-2xl px-4 py-4 text-[13px] font-semibold text-main border border-[#7C9B93]/15 bg-white outline-none focus:border-[#7C9B93]/40" placeholder="Apa visi besar project ini?" />
@@ -3656,6 +3709,7 @@ const App: React.FC = () => {
           onEditMissions={editMissions}
           onEditTeam={editTeam}
           onEditAgenda={editAgenda}
+          isJoinEnabled={activeProjectProfile.joinEnabled !== false}
           isProfileMinimized={isProfileMinimized}
           onToggleProfileMinimize={handleToggleProfileMinimize}
           isAgendaMinimized={isAgendaMinimized}
