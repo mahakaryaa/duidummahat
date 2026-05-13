@@ -1160,7 +1160,12 @@ const App: React.FC = () => {
     sessionStorage.removeItem(ADMIN_OTP_PENDING_KEY);
   };
 
-  const getAdminRedirectUrl = () => `${window.location.origin}/admin`;
+  const getAppOrigin = () => {
+    const configuredUrl = String(import.meta.env.VITE_APP_URL || '').trim().replace(/\/+$/, '');
+    return configuredUrl || window.location.origin;
+  };
+
+  const getAdminRedirectUrl = () => `${getAppOrigin()}/admin`;
 
   const readOAuthErrorFromUrl = () => {
     const params = new URLSearchParams(window.location.search);
@@ -1436,11 +1441,16 @@ const App: React.FC = () => {
 
     setIsAdminSubmitting(true);
     setAdminLoginError('');
-    const { error } = await supabase.auth.verifyOtp({
+    const verifyByType = (type: 'email' | 'magiclink') => supabase.auth.verifyOtp({
       email,
       token: passcode,
-      type: 'email'
+      type
     });
+    let { error } = await verifyByType('email');
+    if (error?.message?.toLowerCase().includes('expired or is invalid')) {
+      const fallback = await verifyByType('magiclink');
+      error = fallback.error;
+    }
     setIsAdminSubmitting(false);
 
     if (error) {

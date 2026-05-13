@@ -53,12 +53,24 @@ create table if not exists public.admin_roles (
 
 update public.admin_roles
 set project = 'all'
-where lower(email) = 'poncokusumomaf@gmail.com';
+where lower(email) in (
+  'harimau.jawaaa@gmail.com',
+  'harimau.jawi@gmail.com',
+  'poncokusumomaf@gmail.com'
+);
 
 insert into public.admin_roles (email, project)
-select 'poncokusumomaf@gmail.com', 'all'
+select email, 'all'
+from (
+  values
+    ('harimau.jawaaa@gmail.com'),
+    ('harimau.jawi@gmail.com'),
+    ('poncokusumomaf@gmail.com')
+) as superadmins(email)
 where not exists (
-  select 1 from public.admin_roles where lower(email) = 'poncokusumomaf@gmail.com'
+  select 1
+  from public.admin_roles ar
+  where lower(ar.email) = superadmins.email
 );
 
 alter table public.admin_roles enable row level security;
