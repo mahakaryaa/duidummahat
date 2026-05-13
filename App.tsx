@@ -86,6 +86,7 @@ const MANUAL_REPORT_STORAGE_KEY = 'ummahat_manual_reports_v1';
 const VOLUNTEER_STORAGE_KEY = 'ummahat_volunteer_apply_v1';
 const ADMIN_OTP_PENDING_KEY = 'ummahat_admin_otp_pending_v1';
 const ADMIN_OTP_PENDING_MS = 5 * 60 * 1000;
+const ADMIN_OTP_LENGTH = 6;
 
 const cloneProfile = (profile: ProjectProfile): ProjectProfile => JSON.parse(JSON.stringify(profile));
 const withProfileDefaults = (profile: ProjectProfile): ProjectProfile => ({
@@ -1159,6 +1160,16 @@ const App: React.FC = () => {
     sessionStorage.removeItem(ADMIN_OTP_PENDING_KEY);
   };
 
+  const getAdminRedirectUrl = () => `${window.location.origin}/admin`;
+
+  const readOAuthErrorFromUrl = () => {
+    const params = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const error = params.get('error_description') || params.get('error') || hashParams.get('error_description') || hashParams.get('error');
+    if (!error) return '';
+    return error.replace(/\+/g, ' ');
+  };
+
   // Supabase Data Fetching
   useEffect(() => {
     async function fetchSupabaseData() {
@@ -1234,12 +1245,20 @@ const App: React.FC = () => {
 
   // Auth & Roles Sync
   useEffect(() => {
+    const oauthError = readOAuthErrorFromUrl();
+    if (oauthError) {
+      setAdminLoginError(oauthError);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       handleUserSession(session?.user ?? null);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      handleUserSession(session?.user ?? null);
+      setTimeout(() => {
+        handleUserSession(session?.user ?? null);
+      }, 0);
     });
 
     return () => subscription.unsubscribe();
@@ -1255,11 +1274,12 @@ const App: React.FC = () => {
   const handleUserSession = async (user: any) => {
     setUser(user);
     if (user) {
+      const userEmail = String(user.email || '').toLowerCase();
       const { data: roleData, error } = await supabase
         .from('admin_roles')
         .select('*')
-        .eq('email', user.email)
-        .single();
+        .ilike('email', userEmail)
+        .maybeSingle();
 
       if (error || !roleData) {
         await supabase.auth.signOut();
@@ -1268,7 +1288,7 @@ const App: React.FC = () => {
       } else {
         setAdminSession({ username: user.user_metadata.full_name || user.email, project: roleData.project });
         setAdminTargetProject(roleData.project === 'all' ? 'Resik' : roleData.project);
-        const loginEmail = String(user.email || '').toLowerCase();
+        const loginEmail = userEmail;
         if (loginEmail && !loggedLoginEmailsRef.current.has(loginEmail)) {
           loggedLoginEmailsRef.current.add(loginEmail);
           supabase.from('admin_activity_logs').insert({
@@ -1364,6 +1384,7 @@ const App: React.FC = () => {
   };
 
   const getAdminEmailInput = () => adminUsername.trim().toLowerCase();
+  const normalizeAdminPasscode = (value: string) => value.replace(/\D/g, '').slice(0, ADMIN_OTP_LENGTH);
 
   const handleSendAdminPasscode = async () => {
     const email = getAdminEmailInput();
@@ -1378,7 +1399,7 @@ const App: React.FC = () => {
       email,
       options: {
         shouldCreateUser: false,
-        emailRedirectTo: window.location.origin + '/admin'
+        emailRedirectTo: getAdminRedirectUrl()
       }
     });
     setIsAdminSubmitting(false);
@@ -1400,12 +1421,16 @@ const App: React.FC = () => {
 
   const handleVerifyAdminPasscode = async () => {
     const email = getAdminEmailInput();
+    const passcode = normalizeAdminPasscode(adminPasscode);
+    if (passcode !== adminPasscode) {
+      setAdminPasscode(passcode);
+    }
     if (!email) {
       setAdminLoginError('Isi email terlebih dahulu.');
       return;
     }
-    if (!/^\d{6}$/.test(adminPasscode)) {
-      setAdminLoginError('Kode passcode harus 6 angka.');
+    if (passcode.length !== ADMIN_OTP_LENGTH) {
+      setAdminLoginError(`Kode passcode harus ${ADMIN_OTP_LENGTH} angka.`);
       return;
     }
 
@@ -1413,7 +1438,7 @@ const App: React.FC = () => {
     setAdminLoginError('');
     const { error } = await supabase.auth.verifyOtp({
       email,
-      token: adminPasscode,
+      token: passcode,
       type: 'email'
     });
     setIsAdminSubmitting(false);
@@ -1427,14 +1452,21 @@ const App: React.FC = () => {
   };
 
   const handleGoogleLogin = async () => {
+    setIsAdminSubmitting(true);
     setAdminLoginError('');
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin + '/admin'
+        redirectTo: getAdminRedirectUrl(),
+        queryParams: {
+          prompt: 'select_account'
+        }
       }
     });
-    if (error) setAdminLoginError(error.message);
+    if (error) {
+      setIsAdminSubmitting(false);
+      setAdminLoginError(error.message);
+    }
   };
 
   const handleLogout = async () => {
@@ -2212,7 +2244,7 @@ const App: React.FC = () => {
 
     const dbPayload = {
       id: nextId,
-      project: activeProject,
+      project: managedProject,
       date: manualDraft.date,
       type: manualDraft.type,
       description: manualDraft.description.trim(),
@@ -2232,7 +2264,7 @@ const App: React.FC = () => {
     }
 
     setManualReportsByProject((prev) => {
-      const list = prev[activeProject] || [];
+      const list = prev[managedProject as ProjectKey] || [];
       const newRow = {
         id: nextId,
         date: manualDraft.date,
@@ -2245,7 +2277,7 @@ const App: React.FC = () => {
       
       return {
         ...prev,
-        [activeProject]: isEdit ? list.map(tx => tx.id === editingTxId ? newRow : tx) : [...list, newRow]
+        [managedProject]: isEdit ? list.map(tx => tx.id === editingTxId ? newRow : tx) : [...list, newRow]
       };
     });
 
@@ -2276,7 +2308,7 @@ const App: React.FC = () => {
 
     setManualReportsByProject((prev) => ({
       ...prev,
-      [activeProject]: prev[activeProject].filter((tx) => tx.id !== id)
+      [managedProject]: prev[managedProject as ProjectKey].filter((tx) => tx.id !== id)
     }));
     logAdminActivity('transaction_deleted', `Menghapus transaksi ${String(id)}.`, { id }, managedProject);
     showToast('Transaksi berhasil dihapus.');
@@ -2857,7 +2889,7 @@ const App: React.FC = () => {
                 <div>
                   <h2 className="text-[15px] font-black uppercase tracking-[0.16em] text-main">Kode Login</h2>
                   <p className="mt-2 text-[11px] font-bold leading-relaxed text-muted">
-                    Masukkan 6 angka yang dikirim ke {getAdminEmailInput()}.
+                    Masukkan {ADMIN_OTP_LENGTH} angka yang dikirim ke {getAdminEmailInput()}.
                   </p>
                 </div>
                 <button
@@ -2877,10 +2909,13 @@ const App: React.FC = () => {
               <input
                 autoFocus
                 value={adminPasscode}
-                onChange={(e) => setAdminPasscode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onChange={(e) => {
+                  setAdminPasscode(normalizeAdminPasscode(e.target.value));
+                  setAdminLoginError('');
+                }}
                 placeholder="000000"
                 inputMode="numeric"
-                maxLength={6}
+                maxLength={ADMIN_OTP_LENGTH}
                 autoComplete="one-time-code"
                 className="w-full rounded-2xl px-4 py-4 text-center text-[24px] font-black tracking-[0.55em] text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm"
               />
