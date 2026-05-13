@@ -1175,6 +1175,13 @@ const App: React.FC = () => {
     return error.replace(/\+/g, ' ');
   };
 
+  const openAdminPanel = () => {
+    setViewMode('admin');
+    if (window.location.pathname !== '/admin') {
+      window.history.replaceState({}, '', '/admin');
+    }
+  };
+
   // Supabase Data Fetching
   useEffect(() => {
     async function fetchSupabaseData() {
@@ -1293,6 +1300,11 @@ const App: React.FC = () => {
       } else {
         setAdminSession({ username: user.user_metadata.full_name || user.email, project: roleData.project });
         setAdminTargetProject(roleData.project === 'all' ? 'Resik' : roleData.project);
+        setAdminTab(roleData.project === 'all' ? 'admin_management' : 'profil');
+        openAdminPanel();
+        setIsPasscodeSent(false);
+        setAdminLoginError('');
+        clearPendingAdminOtp();
         const loginEmail = userEmail;
         if (loginEmail && !loggedLoginEmailsRef.current.has(loginEmail)) {
           loggedLoginEmailsRef.current.add(loginEmail);
