@@ -46,6 +46,19 @@ as $$
     )
 $$;
 
+create or replace function public.get_my_admin_role()
+returns table(email text, project text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select ar.email, ar.project
+  from public.admin_roles ar
+  where lower(ar.email) = lower(coalesce(auth.email(), ''))
+  limit 1
+$$;
+
 create table if not exists public.admin_roles (
   email text primary key,
   project text not null

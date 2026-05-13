@@ -1092,6 +1092,7 @@ const App: React.FC = () => {
   const [adminSession, setAdminSession] = useState<{ username: string; project: ProjectKey | 'all' } | null>(null);
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPasscode, setAdminPasscode] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
   const [isAdminSubmitting, setIsAdminSubmitting] = useState(false);
   const [isPasscodeSent, setIsPasscodeSent] = useState(false);
   const [adminLoginError, setAdminLoginError] = useState('');
@@ -1119,6 +1120,7 @@ const App: React.FC = () => {
   const [adminActivityLogs, setAdminActivityLogs] = useState<AdminActivityLog[]>([]);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
   const [newAdminProject, setNewAdminProject] = useState<ProjectKey | 'all'>('Resik');
   const [volunteerApplyByProject, setVolunteerApplyByProject] = useState<Record<ProjectKey, VolunteerApply[]>>(() => {
     const defaults = getDefaultVolunteerApply();
@@ -1287,13 +1289,22 @@ const App: React.FC = () => {
     setUser(user);
     if (user) {
       const userEmail = String(user.email || '').toLowerCase();
-      const { data: roleData, error } = await supabase
-        .from('admin_roles')
-        .select('*')
-        .ilike('email', userEmail)
-        .maybeSingle();
+      const { data: rpcRoleData, error: rpcRoleError } = await supabase.rpc('get_my_admin_role');
+      let roleData = Array.isArray(rpcRoleData) ? rpcRoleData[0] : null;
+      let roleError = rpcRoleError;
 
-      if (error || !roleData) {
+      if (rpcRoleError) {
+        const fallback = await supabase
+          .from('admin_roles')
+          .select('*')
+          .ilike('email', userEmail)
+          .maybeSingle();
+        roleData = fallback.data;
+        roleError = fallback.error;
+      }
+
+      if (roleError || !roleData) {
+        if (roleError) console.error('Supabase error reading admin role:', roleError);
         await supabase.auth.signOut();
         setAdminLoginError('Email ini tidak terdaftar sebagai admin.');
         setAdminSession(null);
@@ -1372,18 +1383,53 @@ const App: React.FC = () => {
   const addAdminRole = async () => {
     if (!newAdminEmail.trim()) return;
     const email = newAdminEmail.trim().toLowerCase();
-    const { error } = await supabase.from('admin_roles').insert({
-      email,
-      project: newAdminProject
+    if (newAdminPassword.length < 8) {
+      showToast('Password admin minimal 8 karakter', 'error');
+      return;
+    }
+
+    const { error } = await supabase.functions.invoke('admin-user-management', {
+      body: {
+        action: 'upsert_admin',
+        email,
+        password: newAdminPassword,
+        project: newAdminProject
+      }
     });
     if (!error) {
       showToast('Admin berhasil ditambahkan');
-      logAdminActivity('admin_role_added', `Menambahkan admin ${email} untuk project ${newAdminProject}.`, { email, project: newAdminProject }, 'all');
       setNewAdminEmail('');
+      setNewAdminPassword('');
       fetchAdminRoles();
+      fetchAdminActivityLogs();
     } else {
-      showToast('Gagal menambah admin', 'error');
+      showToast(error.message || 'Gagal menambah admin', 'error');
     }
+  };
+
+  const updateAdminPassword = async (email: string) => {
+    const password = window.prompt(`Password baru untuk ${email} (minimal 8 karakter)`);
+    if (password === null) return;
+    if (password.length < 8) {
+      showToast('Password admin minimal 8 karakter', 'error');
+      return;
+    }
+
+    const { error } = await supabase.functions.invoke('admin-user-management', {
+      body: {
+        action: 'set_password',
+        email,
+        password
+      }
+    });
+
+    if (error) {
+      showToast(error.message || 'Gagal mengubah password', 'error');
+      return;
+    }
+
+    showToast('Password admin diperbarui');
+    fetchAdminActivityLogs();
   };
 
   const deleteAdminRole = async (email: string) => {
@@ -1471,6 +1517,35 @@ const App: React.FC = () => {
     }
 
     clearPendingAdminOtp();
+  };
+
+  const handleAdminPasswordLogin = async () => {
+    const email = getAdminEmailInput();
+    if (!email) {
+      setAdminLoginError('Isi email admin terlebih dahulu.');
+      return;
+    }
+    if (!adminPassword) {
+      setAdminLoginError('Isi password admin terlebih dahulu.');
+      return;
+    }
+
+    setIsAdminSubmitting(true);
+    setAdminLoginError('');
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: adminPassword
+    });
+    setIsAdminSubmitting(false);
+
+    if (error) {
+      setAdminLoginError(error.message);
+      return;
+    }
+
+    setAdminPassword('');
+    clearPendingAdminOtp();
+    setIsPasscodeSent(false);
   };
 
   const handleGoogleLogin = async () => {
@@ -2849,12 +2924,33 @@ const App: React.FC = () => {
                   setAdminUsername(e.target.value);
                   setIsPasscodeSent(false);
                   setAdminPasscode('');
+                  setAdminLoginError('');
                   clearPendingAdminOtp();
                 }}
                 placeholder="Email admin"
                 autoComplete="email"
                 className="w-full rounded-2xl px-4 py-4 text-[13px] font-bold text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm"
               />
+              <input
+                type="password"
+                value={adminPassword}
+                onChange={(e) => {
+                  setAdminPassword(e.target.value);
+                  setAdminLoginError('');
+                }}
+                placeholder="Password admin"
+                autoComplete="current-password"
+                className="w-full rounded-2xl px-4 py-4 text-[13px] font-bold text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm"
+              />
+              <button
+                type="button"
+                onClick={handleAdminPasswordLogin}
+                disabled={isAdminSubmitting}
+                className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-[#4A5568] text-white text-[12px] font-black uppercase tracking-[0.1em] shadow-md hover:bg-[#3D4655] active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Lock size={18} />
+                {isAdminSubmitting ? 'Masuk...' : 'Masuk dengan Password'}
+              </button>
               <button
                 type="submit"
                 disabled={isAdminSubmitting}
@@ -3142,6 +3238,14 @@ const App: React.FC = () => {
                           placeholder="Email Gmail Admin..."
                           className="w-full rounded-2xl px-4 py-4 text-[13px] font-semibold text-main border border-[#7C9B93]/15 bg-white outline-none focus:border-[#7C9B93]/40"
                         />
+                        <input
+                          type="password"
+                          value={newAdminPassword}
+                          onChange={(e) => setNewAdminPassword(e.target.value)}
+                          placeholder="Password awal admin..."
+                          autoComplete="new-password"
+                          className="w-full rounded-2xl px-4 py-4 text-[13px] font-semibold text-main border border-[#7C9B93]/15 bg-white outline-none focus:border-[#7C9B93]/40"
+                        />
                         <select 
                           value={newAdminProject}
                           onChange={(e) => setNewAdminProject(e.target.value as any)}
@@ -3168,12 +3272,22 @@ const App: React.FC = () => {
                               <p className="text-[12px] font-black text-main">{role.email}</p>
                               <p className="text-[9px] font-black uppercase tracking-widest text-[#7C9B93] mt-0.5">{role.project}</p>
                             </div>
-                            <button 
-                              onClick={() => deleteAdminRole(role.email)}
-                              className="p-2.5 text-[#A68B8B] hover:bg-red-50 rounded-xl transition-all"
-                            >
-                              <Trash2 size={16} />
-                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => updateAdminPassword(role.email)}
+                                className="p-2.5 text-[#7C9B93] hover:bg-[#7C9B93]/10 rounded-xl transition-all"
+                                title="Set password admin"
+                              >
+                                <KeyRound size={16} />
+                              </button>
+                              <button
+                                onClick={() => deleteAdminRole(role.email)}
+                                className="p-2.5 text-[#A68B8B] hover:bg-red-50 rounded-xl transition-all"
+                                title="Hapus akses admin"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
