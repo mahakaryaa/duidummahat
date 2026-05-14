@@ -1122,6 +1122,7 @@ const App: React.FC = () => {
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [newAdminProject, setNewAdminProject] = useState<ProjectKey | 'all'>('Resik');
+  const [visibleAdminPasswords, setVisibleAdminPasswords] = useState<Record<string, string>>({});
   const [volunteerApplyByProject, setVolunteerApplyByProject] = useState<Record<ProjectKey, VolunteerApply[]>>(() => {
     const defaults = getDefaultVolunteerApply();
     try {
@@ -1398,6 +1399,7 @@ const App: React.FC = () => {
     });
     if (!error) {
       showToast('Admin berhasil ditambahkan');
+      setVisibleAdminPasswords((prev) => ({ ...prev, [email]: newAdminPassword }));
       setNewAdminEmail('');
       setNewAdminPassword('');
       fetchAdminRoles();
@@ -1429,6 +1431,7 @@ const App: React.FC = () => {
     }
 
     showToast('Password admin diperbarui');
+    setVisibleAdminPasswords((prev) => ({ ...prev, [email.toLowerCase()]: password }));
     fetchAdminActivityLogs();
   };
 
@@ -1546,6 +1549,53 @@ const App: React.FC = () => {
     setAdminPassword('');
     clearPendingAdminOtp();
     setIsPasscodeSent(false);
+  };
+
+  const handleForgotAdminPassword = async () => {
+    const email = getAdminEmailInput();
+    if (!email) {
+      setAdminLoginError('Isi email admin terlebih dahulu untuk reset password.');
+      return;
+    }
+
+    setIsAdminSubmitting(true);
+    setAdminLoginError('');
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: getAdminRedirectUrl()
+    });
+    setIsAdminSubmitting(false);
+
+    if (error) {
+      setAdminLoginError(error.message);
+      return;
+    }
+
+    showToast('Link reset password dikirim ke email.');
+  };
+
+  const handleChangeOwnPassword = async () => {
+    const password = window.prompt('Password baru untuk akun Anda (minimal 8 karakter)');
+    if (password === null) return;
+    if (password.length < 8) {
+      showToast('Password minimal 8 karakter', 'error');
+      return;
+    }
+
+    const confirmPassword = window.prompt('Ulangi password baru');
+    if (confirmPassword === null) return;
+    if (password !== confirmPassword) {
+      showToast('Konfirmasi password tidak sama', 'error');
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      showToast(error.message || 'Gagal mengubah password', 'error');
+      return;
+    }
+
+    showToast('Password berhasil diperbarui');
+    logAdminActivity('own_password_updated', 'Mengubah password akun sendiri.', {}, adminSession?.project || managedProject);
   };
 
   const handleGoogleLogin = async () => {
@@ -2952,6 +3002,14 @@ const App: React.FC = () => {
                 {isAdminSubmitting ? 'Masuk...' : 'Masuk dengan Password'}
               </button>
               <button
+                type="button"
+                onClick={handleForgotAdminPassword}
+                disabled={isAdminSubmitting}
+                className="w-full py-2 rounded-2xl text-muted text-[10px] font-black uppercase tracking-widest hover:text-main transition-colors disabled:opacity-60"
+              >
+                Lupa Password?
+              </button>
+              <button
                 type="submit"
                 disabled={isAdminSubmitting}
                 className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-[#7C9B93] text-white text-[12px] font-black uppercase tracking-[0.1em] shadow-md hover:bg-[#638079] active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
@@ -3090,6 +3148,9 @@ const App: React.FC = () => {
             <div className="flex gap-2">
               <button onClick={openDashboard} className="p-2.5 rounded-xl clay-button text-[#7C9B93] hidden md:flex items-center gap-2">
                 <Home size={18} /> <span className="text-[10px] font-black uppercase tracking-widest">Live View</span>
+              </button>
+              <button onClick={handleChangeOwnPassword} className="p-2.5 rounded-xl clay-button text-[#7C9B93] flex items-center gap-2">
+                <KeyRound size={18} /> <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Password</span>
               </button>
               <button onClick={handleLogout} className="p-2.5 rounded-xl clay-button text-[#A68B8B] flex items-center gap-2">
                 <LogOut size={18} /> <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Logout</span>
@@ -3271,6 +3332,15 @@ const App: React.FC = () => {
                             <div>
                               <p className="text-[12px] font-black text-main">{role.email}</p>
                               <p className="text-[9px] font-black uppercase tracking-widest text-[#7C9B93] mt-0.5">{role.project}</p>
+                              {visibleAdminPasswords[role.email.toLowerCase()] ? (
+                                <p className="mt-1 text-[10px] font-black text-[#A68B8B]">
+                                  Password: {visibleAdminPasswords[role.email.toLowerCase()]}
+                                </p>
+                              ) : (
+                                <p className="mt-1 text-[9px] font-bold text-muted">
+                                  Password tidak disimpan. Reset jika lupa.
+                                </p>
+                              )}
                             </div>
                             <div className="flex items-center gap-1">
                               <button
