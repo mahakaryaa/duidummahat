@@ -47,7 +47,7 @@ Format JSON:
   "warnings": []
 }`;
 
-const DAILY_PROJECT_IMPORT_LIMIT = 1;
+const DAILY_USER_IMPORT_LIMIT = 3;
 
 type AdminRole = {
   email: string;
@@ -226,7 +226,7 @@ const handleParse = async (req: Request, body: Record<string, unknown>) => {
   const fileName = String(body.fileName || 'import.pdf');
   const text = String(body.text || '');
 
-  await assertAdmin(req.headers.get('Authorization') || '', project);
+  const role = await assertAdmin(req.headers.get('Authorization') || '', project);
   const { adminClient } = getSupabaseClients(req.headers.get('Authorization') || '');
 
   if (!project || project === 'Semua') {
@@ -237,18 +237,18 @@ const handleParse = async (req: Request, body: Record<string, unknown>) => {
   }
 
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { count: dailyProjectImportCount, error: countError } = await adminClient
+  const { count: dailyUserImportCount, error: countError } = await adminClient
     .from('imports')
     .select('id', { count: 'exact', head: true })
     .eq('source_type', 'pdf')
-    .contains('raw_result_json', { project })
+    .contains('raw_result_json', { actor_email: role.email })
     .gte('created_at', dayAgo);
 
   if (countError) {
     throw new Error(countError.message);
   }
-  if ((dailyProjectImportCount || 0) >= DAILY_PROJECT_IMPORT_LIMIT) {
-    throw new Error(`Batas import PDF project ${project} sudah tercapai (${DAILY_PROJECT_IMPORT_LIMIT}x per hari). Coba lagi besok atau input manual.`);
+  if ((dailyUserImportCount || 0) >= DAILY_USER_IMPORT_LIMIT) {
+    throw new Error(`Batas import PDF akun ${role.email} sudah tercapai (${DAILY_USER_IMPORT_LIMIT}x per hari). Coba lagi besok atau input manual.`);
   }
 
   const { data: importData, error: importError } = await adminClient
@@ -257,7 +257,7 @@ const handleParse = async (req: Request, body: Record<string, unknown>) => {
       file_name: fileName,
       source_type: 'pdf',
       status: 'draft',
-      raw_result_json: { project },
+      raw_result_json: { project, actor_email: role.email },
     })
     .select('id')
     .single();
@@ -270,7 +270,7 @@ const handleParse = async (req: Request, body: Record<string, unknown>) => {
     const result = await callGemini(text);
     const { error: updateError } = await adminClient
       .from('imports')
-      .update({ status: 'reviewed', raw_result_json: { ...result, project } })
+      .update({ status: 'reviewed', raw_result_json: { ...result, project, actor_email: role.email } })
       .eq('id', importData.id);
 
     if (updateError) {
@@ -375,9 +375,9 @@ Deno.serve(async (req) => {
     if (action === 'parse') return await handleParse(req, body);
     if (action === 'approve') return await handleApprove(req, body);
 
-    return jsonResponse({ error: 'Action tidak dikenal.' }, 400);
+    return jsonResponse({ error: 'Action tidak dikenal.' });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Terjadi kesalahan import PDF.';
-    return jsonResponse({ error: message }, 400);
+    return jsonResponse({ error: message });
   }
 });

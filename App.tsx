@@ -93,7 +93,8 @@ const ADMIN_OTP_LENGTH = 6;
 const cloneProfile = (profile: ProjectProfile): ProjectProfile => JSON.parse(JSON.stringify(profile));
 const withProfileDefaults = (profile: ProjectProfile): ProjectProfile => ({
   ...profile,
-  joinEnabled: profile.joinEnabled !== false
+  joinEnabled: profile.joinEnabled !== false,
+  financialNote: profile.financialNote || ''
 });
 const LEGACY_RESIK_TEAM_NAMES = new Set(['Ummu Nabila', 'Ummu Aisha', 'Ummu Safa', 'Kak Ratna Wulan', 'Kak Rini', 'Bu Nyai']);
 
@@ -163,6 +164,7 @@ const getDefaultProfiles = (): Record<ProjectType, ProjectProfile> => ({
     missions: ['"Jazakumullahu khairan atas kepercayaan dan infak yang telah dititipkan. Semoga setiap rupiah menjadi amal jariyah yang terus mengalir pahalanya, serta menjadi bagian dari keberkahan bagi generasi yang sedang kita jaga bersama."'],
     agenda: [],
     joinEnabled: false,
+    financialNote: '',
     contributions: [],
     team: []
   },
@@ -1204,6 +1206,7 @@ const App: React.FC = () => {
                   missions: p.missions || [],
                   agenda: p.agenda || [],
                   joinEnabled: p.join_enabled !== false,
+                  financialNote: p.financial_note || '',
                   team: p.team || [],
                   contributions: p.contributions || []
                 };
@@ -1655,6 +1658,7 @@ const App: React.FC = () => {
     joinEnabled: true,
     team: []
   });
+  const [financialNoteDraft, setFinancialNoteDraft] = useState('');
   const [contributionDraft, setContributionDraft] = useState<ProjectProfile['contributions']>([]);
   const activeMenuColor = PROJECT_MENU_THEME[activeProject];
 
@@ -1968,6 +1972,7 @@ const App: React.FC = () => {
         })
         .filter(t => t.name.trim() !== '' || t.role.trim() !== '')
     });
+    setFinancialNoteDraft(p.financialNote || '');
     setContributionDraft(p.contributions);
     setManualDraft(createEmptyManualDraft());
   }, [adminSession, adminTargetProject, editableProfiles]);
@@ -1982,6 +1987,10 @@ const App: React.FC = () => {
   const managedProject: ProjectType = adminSession?.project === 'all' ? adminTargetProject : (adminSession?.project || 'Resik');
   const activeProjectProfile = activeProject === 'Semua' ? null : editableProfiles[activeProject as ProjectKey];
   const activeProjectContributions = activeProject === 'Semua' ? null : editableProfiles[activeProject as ProjectKey].contributions;
+  const activeProjectHasFinancialData = activeProject === 'Semua'
+    ? true
+    : (manualReportsByProject[activeProject as ProjectKey] || []).length > 0;
+  const activeFinancialNote = activeProjectProfile?.financialNote?.trim() || '';
   const currentProjectKey = activeProject === 'Semua' ? null : (activeProject as ProjectKey);
   const canEditCurrentProject = Boolean(
     viewMode === 'admin' &&
@@ -2255,6 +2264,9 @@ const App: React.FC = () => {
       if (error) {
         throw new Error(error.message);
       }
+      if (data?.error) {
+        throw new Error(data.error);
+      }
 
       const result = data?.result;
       const rows = mapGeminiTransactionsToRows(result?.transactions || [], file.name);
@@ -2363,6 +2375,7 @@ const App: React.FC = () => {
       });
 
       if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
       if (!data?.transactions?.length) throw new Error('Tidak ada transaksi yang berhasil disimpan.');
 
       setManualReportsByProject((prev) => ({
@@ -2516,18 +2529,67 @@ const App: React.FC = () => {
     showToast('Kontribusi tersimpan.');
   };
 
-  const resetProjectData = () => {
-    const ok = window.confirm(`Reset konten project ${managedProject} ke default?`);
+  const saveFinancialNoteDraft = () => {
+    if (managedProject === 'Semua') {
+      showToast('Pilih project tertentu untuk mengatur catatan.', 'error');
+      return;
+    }
+    updateProjectProfile(managedProject, (p) => ({
+      ...p,
+      financialNote: financialNoteDraft.trim()
+    }));
+    logAdminActivity('financial_note_updated', `Mengubah catatan keuangan kosong project ${managedProject}.`, {
+      hasNote: Boolean(financialNoteDraft.trim())
+    }, managedProject);
+    showToast('Catatan keuangan tersimpan.');
+  };
+
+  const resetProjectProfileData = () => {
+    if (managedProject === 'Semua') {
+      showToast('Pilih project tertentu untuk reset profil.', 'error');
+      return;
+    }
+    const ok = window.confirm(`Hapus/reset semua data profil project ${managedProject}?`);
     if (!ok) return;
     const defaults = getDefaultProfiles();
-    setEditableProfiles((prev) => {
-      const next = { ...prev, [managedProject]: defaults[managedProject] };
-      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(next));
-      return next;
+    updateProjectProfile(managedProject, (p) => ({
+      ...defaults[managedProject],
+      contributions: p.contributions,
+      financialNote: p.financialNote || ''
+    }));
+    logAdminActivity('profile_reset', `Reset data profil project ${managedProject}.`, {}, managedProject);
+    showToast(`Profil ${managedProject} direset.`);
+  };
+
+  const resetProjectFinancialData = () => {
+    if (managedProject === 'Semua') {
+      showToast('Pilih project tertentu untuk reset keuangan.', 'error');
+      return;
+    }
+    const ok = window.confirm(`Hapus semua data keuangan/transaksi project ${managedProject}?`);
+    if (!ok) return;
+    supabase.from('transactions').delete().eq('project', managedProject).then(({ error }) => {
+      if (error) console.error('Supabase error resetting transactions:', error);
     });
     setManualReportsByProject((prev) => ({ ...prev, [managedProject]: [] }));
-    setVolunteerApplyByProject((prev) => ({ ...prev, [managedProject]: [] }));
-    showToast(`Data ${managedProject} direset.`);
+    logAdminActivity('financial_data_reset', `Reset data keuangan project ${managedProject}.`, {}, managedProject);
+    showToast(`Keuangan ${managedProject} direset.`);
+  };
+
+  const resetProjectContributionData = () => {
+    if (managedProject === 'Semua') {
+      showToast('Pilih project tertentu untuk reset kontribusi.', 'error');
+      return;
+    }
+    const ok = window.confirm(`Hapus/reset semua data kontribusi project ${managedProject}?`);
+    if (!ok) return;
+    const defaults = getDefaultProfiles();
+    updateProjectProfile(managedProject, (p) => ({
+      ...p,
+      contributions: defaults[managedProject].contributions
+    }));
+    logAdminActivity('contribution_data_reset', `Reset data kontribusi project ${managedProject}.`, {}, managedProject);
+    showToast(`Kontribusi ${managedProject} direset.`);
   };
 
   const exportExcelTransactions = () => {
@@ -2584,6 +2646,7 @@ const App: React.FC = () => {
         missions: profile.missions,
         agenda: profile.agenda,
         join_enabled: profile.joinEnabled !== false,
+        financial_note: profile.financialNote || '',
         team: profile.team,
         contributions: profile.contributions,
         updated_at: new Date().toISOString()
@@ -3610,6 +3673,27 @@ const App: React.FC = () => {
             {adminTab === 'keuangan' && (
               // Aggregated View Logic
               <div className="space-y-6">
+                {managedProject !== 'Semua' && (
+                  <div className="clay-card p-6 md:p-8 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-[#7C9B93]/10 text-[#7C9B93]"><Info size={18} /></div>
+                      <div>
+                        <h3 className="text-[13px] font-black uppercase tracking-widest text-main">Catatan Saat Data Kosong</h3>
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted">Ditampilkan di halaman project ketika data keuangan belum tersedia.</p>
+                      </div>
+                    </div>
+                    <textarea
+                      value={financialNoteDraft}
+                      onChange={(e) => setFinancialNoteDraft(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-2xl px-4 py-4 text-[13px] font-semibold text-main border border-[#7C9B93]/15 bg-white outline-none focus:border-[#7C9B93]/40"
+                      placeholder="Contoh: Laporan keuangan bulan ini belum tersedia dan akan diperbarui setelah rekap selesai."
+                    />
+                    <button onClick={saveFinancialNoteDraft} className="px-6 py-3 rounded-2xl bg-[#7C9B93] text-white text-[10px] font-black uppercase tracking-widest shadow-md">
+                      Simpan Catatan
+                    </button>
+                  </div>
+                )}
                 {managedProject === 'Semua' ? (
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
                     <div className="clay-card p-5 space-y-3">
@@ -3892,12 +3976,20 @@ const App: React.FC = () => {
                 </div>
                 <div className="space-y-3">
                   <h3 className="text-[18px] font-black uppercase tracking-widest text-main">Pusat Kendali Data</h3>
-                  <p className="text-[13px] font-medium text-muted">Berhati-hatilah saat melakukan reset data. Tindakan ini akan menghapus seluruh update profil dan transaksi manual yang telah Anda buat untuk project <span className="font-black text-main">{managedProject}</span>.</p>
+                  <p className="text-[13px] font-medium text-muted">Berhati-hatilah saat melakukan reset data. Pilih jenis data yang ingin dihapus untuk project <span className="font-black text-main">{managedProject}</span>.</p>
                 </div>
-                <div className="pt-4 flex flex-col md:flex-row items-center justify-center gap-4">
-                  <button onClick={resetProjectData} className="w-full md:w-auto px-8 py-4 rounded-2xl border-2 border-red-100 text-red-400 text-[11px] font-black uppercase tracking-widest hover:bg-red-50 transition-colors">
-                    Reset Seluruh Data Project
+                <div className="pt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <button onClick={resetProjectProfileData} className="w-full px-6 py-4 rounded-2xl border-2 border-red-100 text-red-400 text-[11px] font-black uppercase tracking-widest hover:bg-red-50 transition-colors">
+                    Hapus Data Profil
                   </button>
+                  <button onClick={resetProjectFinancialData} className="w-full px-6 py-4 rounded-2xl border-2 border-red-100 text-red-400 text-[11px] font-black uppercase tracking-widest hover:bg-red-50 transition-colors">
+                    Hapus Data Keuangan
+                  </button>
+                  <button onClick={resetProjectContributionData} className="w-full px-6 py-4 rounded-2xl border-2 border-red-100 text-red-400 text-[11px] font-black uppercase tracking-widest hover:bg-red-50 transition-colors">
+                    Hapus Data Kontribusi
+                  </button>
+                </div>
+                <div className="flex justify-center">
                   <button onClick={() => setAdminTab('profil')} className="w-full md:w-auto px-8 py-4 rounded-2xl bg-[#F8FAFA] text-main text-[11px] font-black uppercase tracking-widest">
                     Batalkan & Kembali
                   </button>
@@ -4020,6 +4112,19 @@ const App: React.FC = () => {
           Ringkasan Keuangan
         </h2>
       </div>
+
+      {activeProject !== 'Semua' && !activeProjectHasFinancialData && activeFinancialNote && (
+        <div className="fade-in-section rounded-[24px] border border-[#7C9B93]/15 bg-white/70 px-6 py-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-[#7C9B93]/10 text-[#7C9B93] flex-shrink-0">
+              <Info size={18} />
+            </div>
+            <p className="text-[12px] md:text-[13px] font-bold leading-relaxed text-main">
+              {activeFinancialNote}
+            </p>
+          </div>
+        </div>
+      )}
 
       {activeProject === 'Resik' ? (
         <div className="grid grid-cols-2 gap-4 sm:gap-8">

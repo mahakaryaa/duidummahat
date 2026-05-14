@@ -7,6 +7,7 @@ export interface ProjectData {
     missions: string[];
     agenda: string[];
     joinEnabled?: boolean;
+    financialNote?: string;
     contributions: Array<{
       title: string;
       value: string;
