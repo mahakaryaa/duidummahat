@@ -45,7 +45,9 @@ import {
   Info,
   AlertCircle,
   AlertTriangle,
-  KeyRound
+  KeyRound,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { PROJECT_DATA, ProjectData } from './constants';
 import GiftBoxAnimation from './GiftBoxAnimation';
@@ -1093,6 +1095,7 @@ const App: React.FC = () => {
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPasscode, setAdminPasscode] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [isAdminSubmitting, setIsAdminSubmitting] = useState(false);
   const [isPasscodeSent, setIsPasscodeSent] = useState(false);
   const [adminLoginError, setAdminLoginError] = useState('');
@@ -1121,6 +1124,7 @@ const App: React.FC = () => {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [showNewAdminPassword, setShowNewAdminPassword] = useState(false);
   const [newAdminProject, setNewAdminProject] = useState<ProjectKey | 'all'>('Resik');
   const [visibleAdminPasswords, setVisibleAdminPasswords] = useState<Record<string, string>>({});
   const [volunteerApplyByProject, setVolunteerApplyByProject] = useState<Record<ProjectKey, VolunteerApply[]>>(() => {
@@ -2981,17 +2985,28 @@ const App: React.FC = () => {
                 autoComplete="email"
                 className="w-full rounded-2xl px-4 py-4 text-[13px] font-bold text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm"
               />
-              <input
-                type="password"
-                value={adminPassword}
-                onChange={(e) => {
-                  setAdminPassword(e.target.value);
-                  setAdminLoginError('');
-                }}
-                placeholder="Password admin"
-                autoComplete="current-password"
-                className="w-full rounded-2xl px-4 py-4 text-[13px] font-bold text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm"
-              />
+              <div className="relative">
+                <input
+                  type={showAdminPassword ? 'text' : 'password'}
+                  value={adminPassword}
+                  onChange={(e) => {
+                    setAdminPassword(e.target.value);
+                    setAdminLoginError('');
+                  }}
+                  placeholder="Password admin"
+                  autoComplete="current-password"
+                  className="w-full rounded-2xl px-4 pr-12 py-4 text-[13px] font-bold text-main bg-white border border-[#7C9B93]/20 outline-none focus:border-[#7C9B93]/60 focus:ring-2 focus:ring-[#7C9B93]/10 transition-all shadow-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAdminPassword((prev) => !prev)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-main transition-colors"
+                  aria-label={showAdminPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                  title={showAdminPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                >
+                  {showAdminPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={handleAdminPasswordLogin}
@@ -3299,14 +3314,25 @@ const App: React.FC = () => {
                           placeholder="Email Gmail Admin..."
                           className="w-full rounded-2xl px-4 py-4 text-[13px] font-semibold text-main border border-[#7C9B93]/15 bg-white outline-none focus:border-[#7C9B93]/40"
                         />
-                        <input
-                          type="password"
-                          value={newAdminPassword}
-                          onChange={(e) => setNewAdminPassword(e.target.value)}
-                          placeholder="Password awal admin..."
-                          autoComplete="new-password"
-                          className="w-full rounded-2xl px-4 py-4 text-[13px] font-semibold text-main border border-[#7C9B93]/15 bg-white outline-none focus:border-[#7C9B93]/40"
-                        />
+                        <div className="relative">
+                          <input
+                            type={showNewAdminPassword ? 'text' : 'password'}
+                            value={newAdminPassword}
+                            onChange={(e) => setNewAdminPassword(e.target.value)}
+                            placeholder="Password awal admin..."
+                            autoComplete="new-password"
+                            className="w-full rounded-2xl px-4 pr-12 py-4 text-[13px] font-semibold text-main border border-[#7C9B93]/15 bg-white outline-none focus:border-[#7C9B93]/40"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowNewAdminPassword((prev) => !prev)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-main transition-colors"
+                            aria-label={showNewAdminPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                            title={showNewAdminPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                          >
+                            {showNewAdminPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
+                        </div>
                         <select 
                           value={newAdminProject}
                           onChange={(e) => setNewAdminProject(e.target.value as any)}
