@@ -1349,8 +1349,19 @@ const App: React.FC = () => {
   };
 
   const fetchAdminRoles = async () => {
-    const { data } = await supabase.from('admin_roles').select('*');
-    if (data) setAdminRoles(data);
+    const { data, error } = await supabase.functions.invoke('admin-user-management', {
+      body: { action: 'list_admins' }
+    });
+    if (!error && data?.admins) {
+      setAdminRoles(data.admins);
+      return;
+    }
+
+    const fallback = await supabase.from('admin_roles').select('*').order('email', { ascending: true });
+    if (fallback.data) setAdminRoles(fallback.data);
+    if (error || fallback.error) {
+      console.error('Supabase error fetching admin roles:', error || fallback.error);
+    }
   };
 
   const fetchAdminActivityLogs = async () => {
@@ -1404,6 +1415,14 @@ const App: React.FC = () => {
     if (!error && !data?.error) {
       showToast('Admin berhasil ditambahkan');
       setVisibleAdminPasswords((prev) => ({ ...prev, [email]: newAdminPassword }));
+      setAdminRoles((prev) => {
+        const nextRole = { email, project: newAdminProject };
+        const exists = prev.some((role) => role.email.toLowerCase() === email);
+        const next = exists
+          ? prev.map((role) => role.email.toLowerCase() === email ? nextRole : role)
+          : [...prev, nextRole];
+        return next.sort((a, b) => a.email.localeCompare(b.email));
+      });
       setNewAdminEmail('');
       setNewAdminPassword('');
       fetchAdminRoles();

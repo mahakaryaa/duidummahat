@@ -93,8 +93,17 @@ Deno.serve(async (req) => {
     const password = normalizePassword(body.password);
     const project = normalizeProject(body.project);
 
-    if (!['upsert_admin', 'set_password'].includes(action)) {
+    if (!['list_admins', 'upsert_admin', 'set_password'].includes(action)) {
       return jsonResponse({ error: 'Aksi tidak dikenal.' });
+    }
+
+    if (action === 'list_admins') {
+      const { data, error } = await adminClient
+        .from('admin_roles')
+        .select('email, project')
+        .order('email', { ascending: true });
+      if (error) throw error;
+      return jsonResponse({ ok: true, admins: data || [] });
     }
 
     if (!email || !email.includes('@')) {
