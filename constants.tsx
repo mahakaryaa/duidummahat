@@ -8,6 +8,8 @@ export interface ProjectData {
     agenda: string[];
     joinEnabled?: boolean;
     financialNote?: string;
+    profileVisible?: boolean;
+    contributionsVisible?: boolean;
     contributions: Array<{
       title: string;
       value: string;

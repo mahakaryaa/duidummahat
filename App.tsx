@@ -94,7 +94,9 @@ const cloneProfile = (profile: ProjectProfile): ProjectProfile => JSON.parse(JSO
 const withProfileDefaults = (profile: ProjectProfile): ProjectProfile => ({
   ...profile,
   joinEnabled: profile.joinEnabled !== false,
-  financialNote: profile.financialNote || ''
+  financialNote: profile.financialNote || '',
+  profileVisible: profile.profileVisible !== false,
+  contributionsVisible: profile.contributionsVisible !== false
 });
 const LEGACY_RESIK_TEAM_NAMES = new Set(['Ummu Nabila', 'Ummu Aisha', 'Ummu Safa', 'Kak Ratna Wulan', 'Kak Rini', 'Bu Nyai']);
 
@@ -165,6 +167,8 @@ const getDefaultProfiles = (): Record<ProjectType, ProjectProfile> => ({
     agenda: [],
     joinEnabled: false,
     financialNote: '',
+    profileVisible: true,
+    contributionsVisible: true,
     contributions: [],
     team: []
   },
@@ -1207,6 +1211,8 @@ const App: React.FC = () => {
                   agenda: p.agenda || [],
                   joinEnabled: p.join_enabled !== false,
                   financialNote: p.financial_note || '',
+                  profileVisible: p.profile_visible !== false,
+                  contributionsVisible: p.contributions_visible !== false,
                   team: p.team || [],
                   contributions: p.contributions || []
                 };
@@ -1651,11 +1657,13 @@ const App: React.FC = () => {
 
   const [adminTab, setAdminTab] = useState<'profil' | 'keuangan' | 'kontribusi' | 'admin_management'>('profil');
   const [adminTargetProject, setAdminTargetProject] = useState<ProjectType>('Resik');
-  const [profileDraft, setProfileDraft] = useState<{ vision: string; missions: string[]; agenda: string[]; joinEnabled: boolean; team: Array<{ name: string; role: string }> }>({
+  const [profileDraft, setProfileDraft] = useState<{ vision: string; missions: string[]; agenda: string[]; joinEnabled: boolean; profileVisible: boolean; contributionsVisible: boolean; team: Array<{ name: string; role: string }> }>({
     vision: '',
     missions: [],
     agenda: [],
     joinEnabled: true,
+    profileVisible: true,
+    contributionsVisible: true,
     team: []
   });
   const [financialNoteDraft, setFinancialNoteDraft] = useState('');
@@ -1962,6 +1970,8 @@ const App: React.FC = () => {
       missions: [...p.missions],
       agenda: [...p.agenda],
       joinEnabled: p.joinEnabled !== false,
+      profileVisible: p.profileVisible !== false,
+      contributionsVisible: p.contributionsVisible !== false,
       team: p.team
         .map((t: any) => {
           if (typeof t === 'string') {
@@ -1987,6 +1997,8 @@ const App: React.FC = () => {
   const managedProject: ProjectType = adminSession?.project === 'all' ? adminTargetProject : (adminSession?.project || 'Resik');
   const activeProjectProfile = activeProject === 'Semua' ? null : editableProfiles[activeProject as ProjectKey];
   const activeProjectContributions = activeProject === 'Semua' ? null : editableProfiles[activeProject as ProjectKey].contributions;
+  const isActiveProfileVisible = activeProjectProfile?.profileVisible !== false;
+  const isActiveContributionsVisible = activeProjectProfile?.contributionsVisible !== false;
   const activeProjectHasFinancialData = activeProject === 'Semua'
     ? true
     : (manualReportsByProject[activeProject as ProjectKey] || []).length > 0;
@@ -2504,6 +2516,8 @@ const App: React.FC = () => {
       missions: profileDraft.missions.map((s) => s.trim()).filter(Boolean),
       agenda: profileDraft.agenda.map((s) => s.trim()).filter(Boolean),
       joinEnabled: profileDraft.joinEnabled,
+      profileVisible: profileDraft.profileVisible,
+      contributionsVisible: profileDraft.contributionsVisible,
       team: profileDraft.team
         .filter(member => member.name?.trim() || member.role?.trim())
         .map((member, idx) => ({
@@ -2513,7 +2527,7 @@ const App: React.FC = () => {
         }))
     }));
     logAdminActivity('profile_updated', `Mengubah profil project ${managedProject}.`, {
-      fields: ['vision', 'missions', 'agenda', 'joinEnabled', 'team']
+      fields: ['vision', 'missions', 'agenda', 'joinEnabled', 'profileVisible', 'contributionsVisible', 'team']
     }, managedProject);
     showToast('Profil project tersimpan.');
   };
@@ -2527,6 +2541,46 @@ const App: React.FC = () => {
       count: contributionDraft.filter((c) => c.title.trim() && c.value.trim()).length
     }, managedProject);
     showToast('Kontribusi tersimpan.');
+  };
+
+  const toggleProjectProfileVisibility = () => {
+    if (managedProject === 'Semua') {
+      showToast('Pilih project tertentu untuk mengatur tampilan.', 'error');
+      return;
+    }
+    const nextVisible = editableProfiles[managedProject].profileVisible === false;
+    updateProjectProfile(managedProject, (p) => ({
+      ...p,
+      profileVisible: nextVisible
+    }));
+    setProfileDraft((d) => ({ ...d, profileVisible: nextVisible }));
+    logAdminActivity(
+      nextVisible ? 'profile_shown' : 'profile_hidden',
+      `${nextVisible ? 'Menampilkan' : 'Menyembunyikan'} card profil project ${managedProject}.`,
+      { profileVisible: nextVisible },
+      managedProject
+    );
+    showToast(nextVisible ? 'Card profil ditampilkan.' : 'Card profil disembunyikan.');
+  };
+
+  const toggleProjectContributionsVisibility = () => {
+    if (managedProject === 'Semua') {
+      showToast('Pilih project tertentu untuk mengatur tampilan.', 'error');
+      return;
+    }
+    const nextVisible = editableProfiles[managedProject].contributionsVisible === false;
+    updateProjectProfile(managedProject, (p) => ({
+      ...p,
+      contributionsVisible: nextVisible
+    }));
+    setProfileDraft((d) => ({ ...d, contributionsVisible: nextVisible }));
+    logAdminActivity(
+      nextVisible ? 'contributions_shown' : 'contributions_hidden',
+      `${nextVisible ? 'Menampilkan' : 'Menyembunyikan'} card capaian dan kontribusi project ${managedProject}.`,
+      { contributionsVisible: nextVisible },
+      managedProject
+    );
+    showToast(nextVisible ? 'Card capaian ditampilkan.' : 'Card capaian disembunyikan.');
   };
 
   const saveFinancialNoteDraft = () => {
@@ -2647,6 +2701,8 @@ const App: React.FC = () => {
         agenda: profile.agenda,
         join_enabled: profile.joinEnabled !== false,
         financial_note: profile.financialNote || '',
+        profile_visible: profile.profileVisible !== false,
+        contributions_visible: profile.contributionsVisible !== false,
         team: profile.team,
         contributions: profile.contributions,
         updated_at: new Date().toISOString()
@@ -3525,9 +3581,23 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 <div className="lg:col-span-8 space-y-6">
                   <div className="clay-card p-6 md:p-8 space-y-6">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="p-2 rounded-xl bg-[#7C9B93]/10 text-[#7C9B93]"><Info size={18} /></div>
-                      <h3 className="text-[13px] font-black uppercase tracking-widest text-main">Identitas & Narasi</h3>
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-2">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-xl bg-[#7C9B93]/10 text-[#7C9B93]"><Info size={18} /></div>
+                        <h3 className="text-[13px] font-black uppercase tracking-widest text-main">Identitas & Narasi</h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={toggleProjectProfileVisibility}
+                        className={`w-full md:w-auto px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
+                          editableProfiles[managedProject].profileVisible === false
+                            ? 'bg-[#7C9B93] text-white shadow-md'
+                            : 'bg-[#A68B8B]/10 text-[#A68B8B] hover:bg-[#A68B8B]/15'
+                        }`}
+                      >
+                        {editableProfiles[managedProject].profileVisible === false ? <Eye size={14} /> : <EyeOff size={14} />}
+                        {editableProfiles[managedProject].profileVisible === false ? 'Tampilkan Profil' : 'Sembunyikan Profil'}
+                      </button>
                     </div>
                     <div className="space-y-6">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-3xl border border-[#7C9B93]/10 bg-[#7C9B93]/5">
@@ -3924,14 +3994,28 @@ const App: React.FC = () => {
 
             {adminTab === 'kontribusi' && managedProject !== 'Semua' && (
               <div className="max-w-4xl mx-auto clay-card p-6 md:p-8 space-y-8">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-xl bg-[#7C9B93]/10 text-[#7C9B93]"><Heart size={18} /></div>
                     <h3 className="text-[13px] font-black uppercase tracking-widest text-main">Capaian & Kontribusi</h3>
                   </div>
-                  <button onClick={() => setContributionDraft((prev) => [...prev, { title: '', value: '', description: '', illustration: 'reduction' }])} className="px-4 py-2 rounded-xl bg-[#7C9B93]/10 text-[#7C9B93] text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
-                    <Plus size={14} /> Tambah Item
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      type="button"
+                      onClick={toggleProjectContributionsVisibility}
+                      className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
+                        editableProfiles[managedProject].contributionsVisible === false
+                          ? 'bg-[#7C9B93] text-white shadow-md'
+                          : 'bg-[#A68B8B]/10 text-[#A68B8B] hover:bg-[#A68B8B]/15'
+                      }`}
+                    >
+                      {editableProfiles[managedProject].contributionsVisible === false ? <Eye size={14} /> : <EyeOff size={14} />}
+                      {editableProfiles[managedProject].contributionsVisible === false ? 'Tampilkan' : 'Sembunyikan'}
+                    </button>
+                    <button onClick={() => setContributionDraft((prev) => [...prev, { title: '', value: '', description: '', illustration: 'reduction' }])} className="px-4 py-2 rounded-xl bg-[#7C9B93]/10 text-[#7C9B93] text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">
+                      <Plus size={14} /> Tambah Item
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -4073,7 +4157,7 @@ const App: React.FC = () => {
       )}
 
       {activeProject === 'Semua' && <WelcomeSection />}
-      {activeProjectProfile && (
+      {activeProjectProfile && isActiveProfileVisible && (
         <ProjectProfileSection
           projectName={activeProject}
           vision={activeProjectProfile.vision}
@@ -4097,7 +4181,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {activeProjectContributions && (
+      {activeProjectContributions && isActiveContributionsVisible && (
         <ContributionGridSection
           contributions={activeProjectContributions}
           isAdminMode={canEditCurrentProject}
