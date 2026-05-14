@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
     const password = normalizePassword(body.password);
     const project = normalizeProject(body.project);
 
-    if (!['list_admins', 'upsert_admin', 'set_password'].includes(action)) {
+    if (!['list_admins', 'upsert_admin', 'set_password', 'delete_admin'].includes(action)) {
       return jsonResponse({ error: 'Aksi tidak dikenal.' });
     }
 
@@ -110,12 +110,36 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Email admin tidak valid.' });
     }
 
-    if (password.length < 8) {
+    if (action !== 'delete_admin' && password.length < 8) {
       return jsonResponse({ error: 'Password admin minimal 8 karakter.' });
     }
 
     if (action === 'upsert_admin' && !allowedProjects.has(project)) {
       return jsonResponse({ error: 'Project admin tidak valid.' });
+    }
+
+    if (action === 'delete_admin') {
+      if (email === actorEmail) {
+        return jsonResponse({ error: 'Tidak bisa menghapus akses akun sendiri.' });
+      }
+
+      const { data: deletedRole, error: deleteRoleError } = await adminClient
+        .from('admin_roles')
+        .delete()
+        .ilike('email', email)
+        .select('email, project')
+        .maybeSingle();
+      if (deleteRoleError) throw deleteRoleError;
+
+      await adminClient.from('admin_activity_logs').insert({
+        actor_email: actorEmail,
+        project: deletedRole?.project || 'all',
+        action: 'admin_role_deleted',
+        description: `Menghapus akses admin ${email}.`,
+        metadata: { email, project: deletedRole?.project || null },
+      });
+
+      return jsonResponse({ ok: true, email, deleted: Boolean(deletedRole) });
     }
 
     const existingUser = await findUserByEmail(adminClient, email);

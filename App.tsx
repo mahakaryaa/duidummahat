@@ -1468,17 +1468,32 @@ const App: React.FC = () => {
   };
 
   const deleteAdminRole = async (email: string) => {
-    if (email === user?.email) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail === user?.email?.toLowerCase()) {
       showToast('Tidak bisa menghapus diri sendiri', 'error');
       return;
     }
     if (!window.confirm(`Hapus akses untuk ${email}?`)) return;
-    const { error } = await supabase.from('admin_roles').delete().eq('email', email);
-    if (!error) {
-      showToast('Akses dihapus');
-      logAdminActivity('admin_role_deleted', `Menghapus akses admin ${email}.`, { email }, 'all');
-      fetchAdminRoles();
+    const { data, error } = await supabase.functions.invoke('admin-user-management', {
+      body: {
+        action: 'delete_admin',
+        email: normalizedEmail
+      }
+    });
+    if (error || data?.error) {
+      showToast(data?.error || error?.message || 'Gagal menghapus akses admin', 'error');
+      return;
     }
+
+    showToast(data?.deleted ? 'Akses dihapus' : 'Akses admin tidak ditemukan');
+    setAdminRoles((prev) => prev.filter((role) => role.email.toLowerCase() !== normalizedEmail));
+    setVisibleAdminPasswords((prev) => {
+      const next = { ...prev };
+      delete next[normalizedEmail];
+      return next;
+    });
+    fetchAdminRoles();
+    fetchAdminActivityLogs();
   };
 
   const getAdminEmailInput = () => adminUsername.trim().toLowerCase();
