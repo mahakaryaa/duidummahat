@@ -87,6 +87,7 @@ const PROFILE_STORAGE_KEY = 'ummahat_profiles_v1';
 const MANUAL_REPORT_STORAGE_KEY = 'ummahat_manual_reports_v1';
 const VOLUNTEER_STORAGE_KEY = 'ummahat_volunteer_apply_v1';
 const ADMIN_OTP_PENDING_KEY = 'ummahat_admin_otp_pending_v1';
+const ADMIN_LOGIN_INTENT_KEY = 'ummahat_admin_login_intent_v1';
 const ADMIN_OTP_PENDING_MS = 5 * 60 * 1000;
 const ADMIN_OTP_LENGTH = 6;
 
@@ -341,15 +342,15 @@ const SummaryCard = ({
   const isSpecial = variant === 'special';
 
   return (
-    <div className={`clay-card p-6 md:p-8 flex flex-col items-center justify-center text-center ${isSpecial ? 'bg-[#A68B8B]/10' : ''} ${className}`}>
+    <div className={`clay-card p-5 md:p-8 flex min-w-0 flex-col items-center justify-center text-center overflow-hidden ${isSpecial ? 'bg-[#A68B8B]/10' : ''} ${className}`}>
       <div className="relative mb-4">
           <div className={`w-14 h-14 flex items-center justify-center rounded-[22px] clay-inset ${isSpecial ? 'bg-[#A68B8B]/12' : ''}`}>
             <Icon className={`w-7 h-7 ${isSpecial ? 'text-[#A68B8B]' : ''}`} style={!isSpecial ? { color: accentColor } : undefined} strokeWidth={2.5} />
           </div>
       </div>
       <div className="flex flex-col items-center w-full">
-        <p className="text-[10px] md:text-[12px] font-black uppercase tracking-widest mb-1 text-muted">{title}</p>
-        <p ref={valueRef} className={`text-[18px] md:text-[20px] font-black tracking-tight leading-tight ${isSpecial ? 'text-[#A68B8B]' : 'text-main'}`}>Rp 0</p>
+        <p className="max-w-full text-[9px] md:text-[12px] font-black uppercase tracking-widest mb-1 text-muted leading-tight break-words">{title}</p>
+        <p ref={valueRef} className={`max-w-full text-[15px] sm:text-[17px] md:text-[20px] font-black tracking-tight leading-tight break-words ${isSpecial ? 'text-[#A68B8B]' : 'text-main'}`}>Rp 0</p>
         {subtitle && (
           <div
             className={`mt-2.5 px-3 py-0.5 rounded-full border shadow-sm ${isSpecial ? 'bg-[#A68B8B]/10 border-[#A68B8B]/25' : ''}`}
@@ -1030,7 +1031,9 @@ const AdminPanel = ({
 const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<'dashboard' | 'admin'>(() => {
     if (typeof window === 'undefined') return 'dashboard';
-    return window.location.pathname === '/admin' ? 'admin' : 'dashboard';
+    return window.location.pathname === '/admin' || sessionStorage.getItem(ADMIN_LOGIN_INTENT_KEY) === 'admin'
+      ? 'admin'
+      : 'dashboard';
   });
   const [activeProject, setActiveProject] = useState<ProjectType>('Semua');
   const [editableProfiles, setEditableProfiles] = useState<Record<ProjectType, ProjectProfile>>(() => {
@@ -1190,7 +1193,8 @@ const App: React.FC = () => {
 
   const openAdminPanel = () => {
     setViewMode('admin');
-    if (window.location.pathname !== '/admin') {
+    sessionStorage.removeItem(ADMIN_LOGIN_INTENT_KEY);
+    if (window.location.pathname !== '/admin' || window.location.search || window.location.hash) {
       window.history.replaceState({}, '', '/admin');
     }
   };
@@ -1322,10 +1326,12 @@ const App: React.FC = () => {
         await supabase.auth.signOut();
         setAdminLoginError('Email ini tidak terdaftar sebagai admin.');
         setAdminSession(null);
+        sessionStorage.removeItem(ADMIN_LOGIN_INTENT_KEY);
       } else {
-        setAdminSession({ username: user.user_metadata.full_name || user.email, project: roleData.project });
-        setAdminTargetProject(roleData.project === 'all' ? 'Resik' : roleData.project);
-        setAdminTab(roleData.project === 'all' ? 'admin_management' : 'profil');
+        const roleProject = String(roleData.project || '').trim() as ProjectKey | 'all';
+        setAdminSession({ username: user.user_metadata.full_name || user.email, project: roleProject });
+        setAdminTargetProject(roleProject === 'all' ? 'Resik' : roleProject);
+        setAdminTab(roleProject === 'all' ? 'admin_management' : 'profil');
         openAdminPanel();
         setIsPasscodeSent(false);
         setAdminLoginError('');
@@ -1335,9 +1341,9 @@ const App: React.FC = () => {
           loggedLoginEmailsRef.current.add(loginEmail);
           supabase.from('admin_activity_logs').insert({
             actor_email: loginEmail,
-            project: roleData.project,
+            project: roleProject,
             action: 'login',
-            description: `Login admin sebagai ${roleData.project === 'all' ? 'superadmin' : roleData.project}.`,
+            description: `Login admin sebagai ${roleProject === 'all' ? 'superadmin' : roleProject}.`,
             metadata: {
               provider: user.app_metadata?.provider || 'unknown',
               name: user.user_metadata?.full_name || null
@@ -1346,7 +1352,7 @@ const App: React.FC = () => {
             if (error) console.error('Supabase error saving login log:', error);
           });
         }
-        if (roleData.project === 'all') {
+        if (roleProject === 'all') {
           fetchAdminRoles();
           fetchAdminActivityLogs();
         }
@@ -1648,6 +1654,7 @@ const App: React.FC = () => {
   const handleGoogleLogin = async () => {
     setIsAdminSubmitting(true);
     setAdminLoginError('');
+    sessionStorage.setItem(ADMIN_LOGIN_INTENT_KEY, 'admin');
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -1659,6 +1666,7 @@ const App: React.FC = () => {
     });
     if (error) {
       setIsAdminSubmitting(false);
+      sessionStorage.removeItem(ADMIN_LOGIN_INTENT_KEY);
       setAdminLoginError(error.message);
     }
   };
@@ -4122,18 +4130,18 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen p-4 md:p-10 max-w-7xl mx-auto space-y-12 pb-40">
+    <div className="min-h-screen w-full max-w-7xl mx-auto overflow-x-hidden p-4 md:p-10 space-y-10 md:space-y-12 pb-40">
       
-      <header className="flex justify-between items-center fade-in-section">
-        <div className="flex items-center space-x-6">
-            <div className="w-16 h-16 clay-card flex items-center justify-center">
+      <header className="flex flex-wrap justify-between items-center gap-4 fade-in-section">
+        <div className="flex min-w-0 items-center gap-4 md:gap-6">
+            <div className="w-14 h-14 md:w-16 md:h-16 clay-card flex flex-shrink-0 items-center justify-center">
                 <Icon size={32} style={{ color: activeMenuColor }} />
             </div>
-            <div>
+            <div className="min-w-0">
                 <h1 className="text-[12px] font-black uppercase tracking-[0.25em] text-muted mb-1">Project Ummahat</h1>
                 <div className="flex flex-col">
-                  <p className="text-[28px] md:text-[36px] font-black text-main leading-none">{activeProject}</p>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] mt-1" style={{ color: activeMenuColor }}>{Timeline}</p>
+                  <p className="text-[26px] md:text-[36px] font-black text-main leading-none break-words">{activeProject}</p>
+                  <p className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] mt-1 leading-tight break-words" style={{ color: activeMenuColor }}>{Timeline}</p>
                 </div>
             </div>
         </div>
@@ -4226,7 +4234,7 @@ const App: React.FC = () => {
       )}
 
       {activeProject === 'Resik' ? (
-        <div className="grid grid-cols-2 gap-4 sm:gap-8">
+        <div className="grid grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
           <SummaryCard title="Total Saldo" numericValue={currentData.summary.balance} icon={Wallet} type="balance" className="card-anim" accentColor={activeMenuColor} />
           <SummaryCard title="Transaksi" numericValue={currentData.transactions.length} icon={History} type="count" className="card-anim" accentColor={activeMenuColor} />
           <SummaryCard title="Disalurkan" numericValue={resikStats.distributed} icon={Heart} type="expense" variant="special" className="card-anim" subtitle="Ramadhan Lalu" />
@@ -4235,7 +4243,7 @@ const App: React.FC = () => {
           <SummaryCard title="Total Keluar" numericValue={currentData.summary.expense} icon={TrendingDown} type="expense" className="card-anim" accentColor={activeMenuColor} />
         </div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
+        <div className="grid grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
           <SummaryCard title="Total Saldo" numericValue={currentData.summary.balance} icon={Wallet} type="balance" className="card-anim" accentColor={activeMenuColor} />
           <SummaryCard title="Transaksi" numericValue={currentData.transactions.length} icon={History} type="count" className="card-anim" accentColor={activeMenuColor} />
           <SummaryCard title="Total Masuk" numericValue={currentData.summary.income} icon={TrendingUp} type="income" className="card-anim" accentColor={activeMenuColor} />
@@ -4243,13 +4251,13 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 fade-in-section">
-        <div className="lg:col-span-2 clay-card p-10">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.85fr)] gap-6 md:gap-8 fade-in-section">
+        <div className="clay-card p-5 md:p-8 lg:p-10 min-w-0 overflow-hidden">
             <h3 className="text-[12px] font-black uppercase tracking-widest text-main flex items-center gap-3 mb-12">
                 <div className="p-2 clay-inset"><BarChart3 size={18} style={{ color: activeMenuColor }} /></div>
                 {activeProject === 'Semua' ? 'Saldo Tersisa per Project' : 'Visualisasi Data'}
             </h3>
-            <div className="h-[350px]">
+            <div className="h-[280px] md:h-[350px] min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                     {activeProject === 'Semua' ? (
                         <BarChart data={aggregatedData.projectBalanceContributions} layout="vertical" margin={{ left: 20 }}>
@@ -4286,8 +4294,8 @@ const App: React.FC = () => {
             </div>
         </div>
 
-        <div className="clay-card p-10 flex flex-col items-center">
-             <h3 className="text-[12px] font-black uppercase tracking-widest text-main mb-6 md:mb-12 flex items-center gap-3">
+        <div className="clay-card p-5 md:p-8 lg:p-10 flex min-w-0 flex-col items-center overflow-hidden">
+             <h3 className="w-full text-[11px] md:text-[12px] font-black uppercase tracking-widest text-main mb-6 md:mb-10 flex items-center gap-3 leading-tight">
                  <div className="p-2 clay-inset"><PieIcon size={18} style={{ color: activeMenuColor }} /></div>
                  {activeProject === 'Semua' ? 'Alokasi Dana Semua Project' : activeProject === 'Haru' ? 'Ramadhan Ceria' : 'Penyaluran'}
              </h3>
@@ -4364,26 +4372,26 @@ const App: React.FC = () => {
              )}
              
              {activeProject !== 'Haru' && (
-             <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+             <div className="mt-8 grid grid-cols-1 2xl:grid-cols-2 gap-4 w-full min-w-0">
                 {pieDisplayData.map((p: any, i: number) => (
-                    <div key={i} className="clay-card p-5 md:p-6 flex flex-col gap-4 hover:shadow-md transition-shadow">
+                    <div key={i} className="clay-card p-4 md:p-5 flex min-w-0 flex-col gap-4 hover:shadow-md transition-shadow overflow-hidden">
                         <div className="flex items-start gap-3">
                             <div className="w-4 h-4 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.18)] flex-shrink-0 mt-1" style={{ background: normalizeChartColor(p.renderColor || p.color || COLORS.projects[i % COLORS.projects.length]) }} />
-                            <div className="flex flex-col flex-1 gap-1">
-                              <span className="text-[12px] md:text-[13px] font-black uppercase text-main leading-tight">{p.name}</span>
+                            <div className="flex min-w-0 flex-col flex-1 gap-1">
+                              <span className="text-[11px] md:text-[12px] font-black uppercase text-main leading-tight break-words">{p.name}</span>
                               {activeProject === 'Semua' && (
-                                <span className="text-[10px] font-black uppercase text-muted">
+                                <span className="text-[9px] md:text-[10px] font-black uppercase text-muted leading-tight break-words">
                                   {allocationProjectsMap[p.name] || '-'}
                                 </span>
                               )}
                             </div>
                         </div>
-                        <div className="flex items-end justify-between gap-3 pt-2 border-t border-[#7C9B93]/10">
-                          <div className="flex flex-col">
+                        <div className="flex items-end justify-between gap-3 pt-2 border-t border-[#7C9B93]/10 min-w-0">
+                          <div className="flex min-w-0 flex-col">
                             <span className="text-[10px] font-black uppercase text-muted mb-1">Nominal</span>
-                            <span className="text-[14px] md:text-[16px] font-black text-main">{formatCompactCurrency(activeProject === 'Semua' ? p.value : p.nominal)}</span>
+                            <span className="text-[14px] md:text-[16px] font-black text-main leading-tight break-words">{formatCompactCurrency(activeProject === 'Semua' ? p.value : p.nominal)}</span>
                           </div>
-                          <div className="flex flex-col items-end">
+                          <div className="flex flex-shrink-0 flex-col items-end">
                             <span className="text-[10px] font-black uppercase text-muted mb-1">Persentase</span>
                             <span className="badge-clay text-main text-[13px] md:text-[14px] font-black">
                               {activeProject === 'Semua'
