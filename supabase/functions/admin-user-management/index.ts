@@ -94,19 +94,19 @@ Deno.serve(async (req) => {
     const project = normalizeProject(body.project);
 
     if (!['upsert_admin', 'set_password'].includes(action)) {
-      return jsonResponse({ error: 'Aksi tidak dikenal.' }, 400);
+      return jsonResponse({ error: 'Aksi tidak dikenal.' });
     }
 
     if (!email || !email.includes('@')) {
-      return jsonResponse({ error: 'Email admin tidak valid.' }, 400);
+      return jsonResponse({ error: 'Email admin tidak valid.' });
     }
 
     if (password.length < 8) {
-      return jsonResponse({ error: 'Password admin minimal 8 karakter.' }, 400);
+      return jsonResponse({ error: 'Password admin minimal 8 karakter.' });
     }
 
     if (action === 'upsert_admin' && !allowedProjects.has(project)) {
-      return jsonResponse({ error: 'Project admin tidak valid.' }, 400);
+      return jsonResponse({ error: 'Project admin tidak valid.' });
     }
 
     const existingUser = await findUserByEmail(adminClient, email);
@@ -144,6 +144,6 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, email, project: action === 'upsert_admin' ? project : undefined });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Gagal mengatur admin.';
-    return jsonResponse({ error: message }, 400);
+    return jsonResponse({ error: message });
   }
 });

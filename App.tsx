@@ -1393,7 +1393,7 @@ const App: React.FC = () => {
       return;
     }
 
-    const { error } = await supabase.functions.invoke('admin-user-management', {
+    const { data, error } = await supabase.functions.invoke('admin-user-management', {
       body: {
         action: 'upsert_admin',
         email,
@@ -1401,7 +1401,7 @@ const App: React.FC = () => {
         project: newAdminProject
       }
     });
-    if (!error) {
+    if (!error && !data?.error) {
       showToast('Admin berhasil ditambahkan');
       setVisibleAdminPasswords((prev) => ({ ...prev, [email]: newAdminPassword }));
       setNewAdminEmail('');
@@ -1409,7 +1409,7 @@ const App: React.FC = () => {
       fetchAdminRoles();
       fetchAdminActivityLogs();
     } else {
-      showToast(error.message || 'Gagal menambah admin', 'error');
+      showToast(data?.error || error?.message || 'Gagal menambah admin', 'error');
     }
   };
 
@@ -1421,7 +1421,7 @@ const App: React.FC = () => {
       return;
     }
 
-    const { error } = await supabase.functions.invoke('admin-user-management', {
+    const { data, error } = await supabase.functions.invoke('admin-user-management', {
       body: {
         action: 'set_password',
         email,
@@ -1429,8 +1429,8 @@ const App: React.FC = () => {
       }
     });
 
-    if (error) {
-      showToast(error.message || 'Gagal mengubah password', 'error');
+    if (error || data?.error) {
+      showToast(data?.error || error?.message || 'Gagal mengubah password', 'error');
       return;
     }
 
