@@ -5,7 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const GEMINI_PROMPT = `Baca laporan keuangan dari PDF ini.
+const GEMINI_PROMPT = `Baca laporan keuangan dari dokumen ini.
 
 Tugasmu:
 1. Ambil hanya baris yang benar-benar transaksi.
@@ -106,7 +106,7 @@ const assertAdmin = async (authHeader: string, project: string): Promise<AdminRo
   const { data: roleData, error: roleError } = await adminClient
     .from('admin_roles')
     .select('email, project')
-    .eq('email', email)
+    .ilike('email', email)
     .single();
 
   if (roleError || !roleData) {
@@ -173,7 +173,20 @@ const normalizeGeminiJson = (rawText: string) => {
   };
 };
 
-const callGemini = async (text: string) => {
+const buildGeminiRequest = (parts: Array<Record<string, unknown>>) => ({
+  contents: [
+    {
+      role: 'user',
+      parts,
+    },
+  ],
+  generationConfig: {
+    responseMimeType: 'application/json',
+    temperature: 0.1,
+  },
+});
+
+const callGemini = async (parts: Array<Record<string, unknown>>, sourceLabel: string) => {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   const model = Deno.env.get('GEMINI_MODEL') || 'gemini-2.5-flash';
 
@@ -187,25 +200,12 @@ const callGemini = async (text: string) => {
       'Content-Type': 'application/json',
       'x-goog-api-key': apiKey,
     },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: `${GEMINI_PROMPT}\n\nTEKS PDF:\n${text}` },
-          ],
-        },
-      ],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.1,
-      },
-    }),
+    body: JSON.stringify(buildGeminiRequest(parts)),
   });
 
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(`Gemini gagal membaca PDF: ${message}`);
+    throw new Error(`Gemini gagal membaca ${sourceLabel}: ${message}`);
   }
 
   const payload = await response.json();
@@ -221,26 +221,43 @@ const callGemini = async (text: string) => {
   return normalizeGeminiJson(rawText);
 };
 
+const callGeminiFromText = async (text: string) => {
+  return callGemini([{ text: `${GEMINI_PROMPT}\n\nTEKS DOKUMEN:\n${text}` }], 'PDF');
+};
+
+const callGeminiFromImage = async (base64: string, mimeType: string) => {
+  return callGemini([
+    { text: GEMINI_PROMPT },
+    { inlineData: { mimeType, data: base64 } },
+  ], 'gambar');
+};
+
 const handleParse = async (req: Request, body: Record<string, unknown>) => {
   const project = String(body.project || '');
-  const fileName = String(body.fileName || 'import.pdf');
+  const sourceType = String(body.sourceType || 'pdf') === 'image' ? 'image' : 'pdf';
+  const fileName = String(body.fileName || (sourceType === 'image' ? 'import-image' : 'import.pdf'));
   const text = String(body.text || '');
+  const base64 = String(body.base64 || '');
+  const mimeType = String(body.mimeType || '');
 
   const role = await assertAdmin(req.headers.get('Authorization') || '', project);
   const { adminClient } = getSupabaseClients(req.headers.get('Authorization') || '');
 
   if (!project || project === 'Semua') {
-    throw new Error('Pilih project tertentu sebelum import PDF.');
+    throw new Error('Pilih project tertentu sebelum import.');
   }
-  if (!text.trim()) {
+  if (sourceType === 'pdf' && !text.trim()) {
     throw new Error('PDF tidak berisi teks yang bisa dibaca.');
+  }
+  if (sourceType === 'image' && (!base64 || !mimeType.startsWith('image/'))) {
+    throw new Error('File gambar tidak valid.');
   }
 
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { count: dailyUserImportCount, error: countError } = await adminClient
     .from('imports')
     .select('id', { count: 'exact', head: true })
-    .eq('source_type', 'pdf')
+    .in('source_type', ['pdf', 'image'])
     .contains('raw_result_json', { actor_email: role.email })
     .gte('created_at', dayAgo);
 
@@ -248,14 +265,14 @@ const handleParse = async (req: Request, body: Record<string, unknown>) => {
     throw new Error(countError.message);
   }
   if ((dailyUserImportCount || 0) >= DAILY_USER_IMPORT_LIMIT) {
-    throw new Error(`Batas import PDF akun ${role.email} sudah tercapai (${DAILY_USER_IMPORT_LIMIT}x per hari). Coba lagi besok atau input manual.`);
+    throw new Error(`Batas import akun ${role.email} sudah tercapai (${DAILY_USER_IMPORT_LIMIT}x per hari). Coba lagi besok atau input manual.`);
   }
 
   const { data: importData, error: importError } = await adminClient
     .from('imports')
     .insert({
       file_name: fileName,
-      source_type: 'pdf',
+      source_type: sourceType,
       status: 'draft',
       raw_result_json: { project, actor_email: role.email },
     })
@@ -267,10 +284,12 @@ const handleParse = async (req: Request, body: Record<string, unknown>) => {
   }
 
   try {
-    const result = await callGemini(text);
+    const result = sourceType === 'image'
+      ? await callGeminiFromImage(base64, mimeType)
+      : await callGeminiFromText(text);
     const { error: updateError } = await adminClient
       .from('imports')
-      .update({ status: 'reviewed', raw_result_json: { ...result, project, actor_email: role.email } })
+      .update({ status: 'reviewed', raw_result_json: { ...result, project, actor_email: role.email, source_type: sourceType } })
       .eq('id', importData.id);
 
     if (updateError) {
@@ -283,7 +302,7 @@ const handleParse = async (req: Request, body: Record<string, unknown>) => {
       .from('imports')
       .update({
         status: 'failed',
-        raw_result_json: { error: err instanceof Error ? err.message : 'Gagal membaca PDF.' },
+        raw_result_json: { error: err instanceof Error ? err.message : 'Gagal membaca file.' },
       })
       .eq('id', importData.id);
     throw err;
@@ -345,7 +364,7 @@ const handleApprove = async (req: Request, body: Record<string, unknown>) => {
   });
 
   const { data: insertedRows, error: insertError } = await adminClient
-    .from('transactions')
+    .from('transaction_drafts')
     .insert(approvedRows)
     .select('*');
 

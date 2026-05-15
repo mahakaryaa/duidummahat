@@ -1150,6 +1150,10 @@ const App: React.FC = () => {
       return defaults;
     }
   });
+  const [publishedProfiles, setPublishedProfiles] = useState<Record<ProjectType, ProjectProfile>>(() => getDefaultProfiles());
+  const [publishedReportsByProject, setPublishedReportsByProject] = useState<Record<ProjectType, ManualReportRow[]>>(() => getDefaultManualReports());
+  const [isDraftPreview, setIsDraftPreview] = useState(false);
+  const [isPublishingProject, setIsPublishingProject] = useState(false);
   const loggedLoginEmailsRef = useRef<Set<string>>(new Set());
 
   const readPendingAdminOtp = () => {
@@ -1205,9 +1209,34 @@ const App: React.FC = () => {
       try {
         const { data: profiles } = await supabase.from('project_profiles').select('*');
         if (profiles && profiles.length > 0) {
-          setEditableProfiles(prev => {
+          const applyProfiles = (prev: Record<ProjectType, ProjectProfile>) => {
             const next = { ...prev };
             profiles.forEach(p => {
+              if (PROFILE_PROJECTS.includes(p.project_key as ProjectType)) {
+                next[p.project_key as ProjectType] = {
+                  vision: p.vision || '',
+                  missions: p.missions || [],
+                  agenda: p.agenda || [],
+                  joinEnabled: p.join_enabled !== false,
+                  financialNote: p.financial_note || '',
+                  profileVisible: p.profile_visible !== false,
+                  contributionsVisible: p.contributions_visible !== false,
+                  team: p.team || [],
+                  contributions: p.contributions || []
+                };
+              }
+            });
+            return next;
+          };
+          setPublishedProfiles(applyProfiles);
+          setEditableProfiles(applyProfiles);
+        }
+
+        const { data: draftProfiles } = await supabase.from('project_profile_drafts').select('*');
+        if (draftProfiles && draftProfiles.length > 0) {
+          setEditableProfiles(prev => {
+            const next = { ...prev };
+            draftProfiles.forEach(p => {
               if (PROFILE_PROJECTS.includes(p.project_key as ProjectType)) {
                 next[p.project_key as ProjectType] = {
                   vision: p.vision || '',
@@ -1227,11 +1256,35 @@ const App: React.FC = () => {
         }
 
         const { data: tx } = await supabase.from('transactions').select('*');
-        if (tx && tx.length > 0) {
+        if (tx) {
+          const mapTransactions = (rows: any[]) => (prev: Record<ProjectType, ManualReportRow[]>) => {
+            const next = { ...prev };
+            PROJECT_KEYS.forEach(k => next[k] = []);
+            rows.forEach(t => {
+              if (next[t.project as ProjectType]) {
+                next[t.project as ProjectType].push({
+                  id: t.id,
+                  date: t.date,
+                  type: t.type,
+                  description: t.description,
+                  amount: t.amount,
+                  category: t.category,
+                  note: t.note
+                });
+              }
+            });
+            return next;
+          };
+          setPublishedReportsByProject(mapTransactions(tx));
+          setManualReportsByProject(mapTransactions(tx));
+        }
+
+        const { data: draftTx } = await supabase.from('transaction_drafts').select('*');
+        if (draftTx) {
           setManualReportsByProject(prev => {
             const next = { ...prev };
             PROJECT_KEYS.forEach(k => next[k] = []);
-            tx.forEach(t => {
+            draftTx.forEach(t => {
               if (next[t.project as ProjectType]) {
                 next[t.project as ProjectType].push({
                   id: t.id,
@@ -1675,6 +1728,7 @@ const App: React.FC = () => {
     await supabase.auth.signOut();
     setAdminSession(null);
     setUser(null);
+    setIsDraftPreview(false);
     setViewMode('dashboard');
   };
 
@@ -1768,11 +1822,15 @@ const App: React.FC = () => {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
+  const isShowingDraftData = Boolean(isDraftPreview && adminSession);
+  const displayProfiles = isShowingDraftData ? editableProfiles : publishedProfiles;
+  const displayReportsByProject = isShowingDraftData ? manualReportsByProject : publishedReportsByProject;
+
   const dynamicProjectData = useMemo(() => {
     const data: Record<string, any> = {};
     
     PROJECT_KEYS.forEach(key => {
-      const manualRows = manualReportsByProject[key] || [];
+      const manualRows = displayReportsByProject[key] || [];
       const income = manualRows.reduce((acc, r) => acc + (r.type === 'Masuk' ? r.amount : 0), 0);
       const expense = manualRows.reduce((acc, r) => acc + (r.type === 'Keluar' ? r.amount : 0), 0);
       const savings = manualRows.reduce((acc, r) => acc + (r.type === 'Tabungan' ? r.amount : 0), 0);
@@ -1808,15 +1866,15 @@ const App: React.FC = () => {
 
       data[key] = {
         ...PROJECT_DATA[key],
-        profile: editableProfiles[key],
+        profile: displayProfiles[key],
         summary: { balance, income, expense },
-        transactions: transactions.length > 0 ? transactions : PROJECT_DATA[key].transactions,
-        monthlyFlow: monthlyFlow.length > 0 ? monthlyFlow : PROJECT_DATA[key].monthlyFlow
+        transactions,
+        monthlyFlow
       };
     });
 
     return data;
-  }, [manualReportsByProject, editableProfiles]);
+  }, [displayReportsByProject, displayProfiles]);
 
   const aggregatedData = useMemo(() => {
     const allProjects = PROJECT_KEYS;
@@ -2018,13 +2076,13 @@ const App: React.FC = () => {
 
   const projects: ProjectType[] = ['Semua', 'Resik', 'Hadeyya', 'Siyar', 'Haru'];
   const managedProject: ProjectType = adminSession?.project === 'all' ? adminTargetProject : (adminSession?.project || 'Resik');
-  const activeProjectProfile = activeProject === 'Semua' ? null : editableProfiles[activeProject as ProjectKey];
-  const activeProjectContributions = activeProject === 'Semua' ? null : editableProfiles[activeProject as ProjectKey].contributions;
+  const activeProjectProfile = activeProject === 'Semua' ? null : displayProfiles[activeProject as ProjectKey];
+  const activeProjectContributions = activeProject === 'Semua' ? null : displayProfiles[activeProject as ProjectKey].contributions;
   const isActiveProfileVisible = activeProjectProfile?.profileVisible !== false;
   const isActiveContributionsVisible = activeProjectProfile?.contributionsVisible !== false;
   const activeProjectHasFinancialData = activeProject === 'Semua'
     ? true
-    : (manualReportsByProject[activeProject as ProjectKey] || []).length > 0;
+    : (displayReportsByProject[activeProject as ProjectKey] || []).length > 0;
   const activeFinancialNote = activeProjectProfile?.financialNote?.trim() || '';
   const currentProjectKey = activeProject === 'Semua' ? null : (activeProject as ProjectKey);
   const canEditCurrentProject = Boolean(
@@ -2150,6 +2208,17 @@ const App: React.FC = () => {
     return pages.join('\n');
   };
 
+  const readFileAsBase64 = async (file: File) => {
+    const buffer = await file.arrayBuffer();
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+  };
+
   const guessTransactionType = (line: string): ManualReportRow['type'] => {
     const lower = line.toLowerCase();
     if (/(tabungan|simpan|saving)/.test(lower)) return 'Tabungan';
@@ -2266,8 +2335,15 @@ const App: React.FC = () => {
       showToast('Pilih project tertentu sebelum import PDF.', 'error');
       return;
     }
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-      showToast('File harus berupa PDF.', 'error');
+    const lowerFileName = file.name.toLowerCase();
+    const isPdfFile = file.type === 'application/pdf' || lowerFileName.endsWith('.pdf');
+    const isImageFile = file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(lowerFileName);
+    if (!isPdfFile && !isImageFile) {
+      showToast('File harus berupa PDF atau gambar.', 'error');
+      return;
+    }
+    if (isImageFile && file.size > 8 * 1024 * 1024) {
+      showToast('Ukuran gambar maksimal 8 MB.', 'error');
       return;
     }
 
@@ -2279,20 +2355,24 @@ const App: React.FC = () => {
     setPdfIgnoredRows([]);
     setPdfImportWarnings([]);
     try {
-      const text = await extractPdfText(file);
-      if (!text.trim()) {
+      const text = isPdfFile ? await extractPdfText(file) : '';
+      if (isPdfFile && !text.trim()) {
         setPdfImportRows([]);
-        setPdfImportError('PDF tidak berisi teks yang bisa dibaca. Gunakan PDF teks, bukan scan gambar.');
+        setPdfImportError('PDF tidak berisi teks yang bisa dibaca. Jika ini scan, upload sebagai gambar JPG/PNG/WebP.');
         setIsPdfImportOpen(true);
         return;
       }
+      const base64 = isImageFile ? await readFileAsBase64(file) : '';
 
       const { data, error } = await supabase.functions.invoke('financial-pdf-import', {
         body: {
           action: 'parse',
+          sourceType: isImageFile ? 'image' : 'pdf',
           project: managedProject,
           fileName: file.name,
-          text
+          text,
+          base64,
+          mimeType: file.type || (lowerFileName.endsWith('.png') ? 'image/png' : lowerFileName.endsWith('.webp') ? 'image/webp' : 'image/jpeg')
         }
       });
 
@@ -2324,7 +2404,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error('PDF import failed:', err);
       setPdfImportRows([]);
-      setPdfImportError(err instanceof Error ? err.message : 'Gagal membaca PDF. Coba gunakan PDF teks atau input manual.');
+      setPdfImportError(err instanceof Error ? err.message : 'Gagal membaca file. Coba gunakan file lebih jelas atau input manual.');
       setIsPdfImportOpen(true);
     } finally {
       setIsPdfParsing(false);
@@ -2437,11 +2517,11 @@ const App: React.FC = () => {
       setPdfImportError('');
       logAdminActivity(
         'pdf_import_approved',
-        `Approve import PDF ${pdfSourceName || ''} sebanyak ${data.transactions.length} transaksi.`,
+        `Approve import ${pdfSourceName || ''} sebanyak ${data.transactions.length} transaksi ke draft.`,
         { fileName: pdfSourceName, count: data.transactions.length, importId: pdfImportId },
         managedProject
       );
-      showToast(`${data.transactions.length} transaksi PDF disetujui dan disimpan.`);
+      showToast(`${data.transactions.length} transaksi disetujui ke draft. Klik Publish agar tampil publik.`);
     } catch (err) {
       setPdfImportError(err instanceof Error ? err.message : 'Gagal menyimpan transaksi PDF.');
     } finally {
@@ -2472,11 +2552,11 @@ const App: React.FC = () => {
     };
 
     if (isEdit) {
-      supabase.from('transactions').update(dbPayload).eq('id', nextId).then(({ error }) => {
+      supabase.from('transaction_drafts').update({ ...dbPayload, updated_at: new Date().toISOString() }).eq('id', nextId).then(({ error }) => {
         if (error) console.error('Supabase error updating tx:', error);
       });
     } else {
-      supabase.from('transactions').insert(dbPayload).then(({ error }) => {
+      supabase.from('transaction_drafts').insert(dbPayload).then(({ error }) => {
         if (error) console.error('Supabase error inserting tx:', error);
       });
     }
@@ -2520,7 +2600,7 @@ const App: React.FC = () => {
     const ok = window.confirm('Hapus transaksi ini?');
     if (!ok) return;
     
-    supabase.from('transactions').delete().eq('id', id).then(({ error }) => {
+    supabase.from('transaction_drafts').delete().eq('id', id).then(({ error }) => {
       if (error) console.error('Supabase error deleting tx:', error);
     });
 
@@ -2645,7 +2725,7 @@ const App: React.FC = () => {
     }
     const ok = window.confirm(`Hapus semua data keuangan/transaksi project ${managedProject}?`);
     if (!ok) return;
-    supabase.from('transactions').delete().eq('project', managedProject).then(({ error }) => {
+    supabase.from('transaction_drafts').delete().eq('project', managedProject).then(({ error }) => {
       if (error) console.error('Supabase error resetting transactions:', error);
     });
     setManualReportsByProject((prev) => ({ ...prev, [managedProject]: [] }));
@@ -2717,7 +2797,7 @@ const App: React.FC = () => {
       const next = { ...prev, [project]: updater(prev[project]) };
       const profile = next[project];
       
-      supabase.from('project_profiles').upsert({
+      supabase.from('project_profile_drafts').upsert({
         project_key: project,
         vision: profile.vision,
         missions: profile.missions,
@@ -2844,10 +2924,57 @@ const App: React.FC = () => {
   };
 
   const openDashboard = () => {
+    setIsDraftPreview(false);
     setViewMode('dashboard');
     if (window.location.pathname !== '/') {
       window.history.pushState({}, '', '/');
     }
+  };
+
+  const openDraftPreview = () => {
+    if (!adminSession || managedProject === 'Semua') {
+      showToast('Pilih project tertentu untuk preview draft.', 'error');
+      return;
+    }
+    setActiveProject(managedProject);
+    setIsDraftPreview(true);
+    setViewMode('dashboard');
+    if (window.location.pathname !== '/') {
+      window.history.pushState({}, '', '/');
+    }
+  };
+
+  const backToAdminFromPreview = () => {
+    setIsDraftPreview(false);
+    setViewMode('admin');
+    if (window.location.pathname !== '/admin') {
+      window.history.pushState({}, '', '/admin');
+    }
+  };
+
+  const publishProjectData = async () => {
+    if (!adminSession || managedProject === 'Semua') {
+      showToast('Pilih project tertentu untuk publish.', 'error');
+      return;
+    }
+    setIsPublishingProject(true);
+    const { data, error } = await supabase.functions.invoke('publish-project-data', {
+      body: { project: managedProject }
+    });
+    setIsPublishingProject(false);
+
+    if (error || data?.error) {
+      showToast(data?.error || error?.message || 'Gagal publish project', 'error');
+      return;
+    }
+
+    setPublishedProfiles((prev) => ({ ...prev, [managedProject]: editableProfiles[managedProject] }));
+    setPublishedReportsByProject((prev) => ({
+      ...prev,
+      [managedProject]: [...(manualReportsByProject[managedProject as ProjectKey] || [])]
+    }));
+    fetchAdminActivityLogs();
+    showToast(`Project ${managedProject} dipublish.`);
   };
 
   const transactionModalJSX = isTxModalOpen && canEditCurrentProject ? (
@@ -2891,9 +3018,9 @@ const App: React.FC = () => {
       <div className="bg-[#F8FAFA] shadow-2xl border border-[#7C9B93]/20 w-[calc(100vw-2rem)] max-w-7xl max-h-[90vh] overflow-hidden rounded-[24px] flex flex-col">
         <div className="p-6 border-b border-[#7C9B93]/10 flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-[14px] font-black uppercase tracking-widest text-main">Review Import PDF</h3>
+            <h3 className="text-[14px] font-black uppercase tracking-widest text-main">Review Import File</h3>
             <p className="mt-2 text-[11px] font-bold text-muted leading-relaxed">
-              Periksa transaksi dari {pdfSourceName || 'PDF'} sebelum disetujui masuk ke project {managedProject}.
+              Periksa transaksi dari {pdfSourceName || 'file'} sebelum disetujui masuk ke draft project {managedProject}.
             </p>
           </div>
           <button onClick={() => setIsPdfImportOpen(false)} className="text-muted hover:text-main transition-colors p-1">
@@ -2901,7 +3028,7 @@ const App: React.FC = () => {
           </button>
         </div>
 
-        <div className="p-6 overflow-auto overscroll-contain space-y-4">
+        <div className="p-4 md:p-6 overflow-y-auto overflow-x-hidden overscroll-contain space-y-4 min-h-0">
           {pdfImportRows.some((row) => row.selected && !isValidDateInput(row.date)) && (
             <div className="flex items-start gap-2 rounded-2xl bg-[#A68B8B]/10 border border-[#A68B8B]/20 px-4 py-3 text-[#A68B8B]">
               <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
@@ -2946,7 +3073,7 @@ const App: React.FC = () => {
           )}
 
           {pdfImportRows.length > 0 && (
-            <div className="max-w-full overflow-x-auto overscroll-x-contain [touch-action:pan-x] rounded-2xl border border-[#7C9B93]/10 bg-white">
+            <div className="w-full max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain [touch-action:pan-x] rounded-2xl border border-[#7C9B93]/10 bg-white">
               <table className="w-full min-w-[920px] text-left">
                 <thead>
                   <tr className="bg-[#7C9B93]/5 text-[9px] font-black uppercase tracking-widest text-muted">
@@ -3322,8 +3449,15 @@ const App: React.FC = () => {
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={openDashboard} className="p-2.5 rounded-xl clay-button text-[#7C9B93] hidden md:flex items-center gap-2">
-                <Home size={18} /> <span className="text-[10px] font-black uppercase tracking-widest">Live View</span>
+              <button onClick={openDraftPreview} className="p-2.5 rounded-xl clay-button text-[#7C9B93] hidden md:flex items-center gap-2">
+                <Home size={18} /> <span className="text-[10px] font-black uppercase tracking-widest">Preview</span>
+              </button>
+              <button
+                onClick={publishProjectData}
+                disabled={isPublishingProject || managedProject === 'Semua'}
+                className="p-2.5 rounded-xl clay-button text-[#7C9B93] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <FileSpreadsheet size={18} /> <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">{isPublishingProject ? 'Publishing' : 'Publish'}</span>
               </button>
               <button onClick={handleChangeOwnPassword} className="p-2.5 rounded-xl clay-button text-[#7C9B93] flex items-center gap-2">
                 <KeyRound size={18} /> <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Password</span>
@@ -3910,7 +4044,7 @@ const App: React.FC = () => {
                           <input
                             ref={pdfFileInputRef}
                             type="file"
-                            accept="application/pdf,.pdf"
+                            accept="application/pdf,.pdf,image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
                             onChange={handlePdfImportFile}
                             className="hidden"
                           />
@@ -3919,7 +4053,7 @@ const App: React.FC = () => {
                             disabled={isPdfParsing}
                             className="flex-1 md:flex-none px-4 py-2.5 rounded-xl border border-[#7C9B93]/20 text-[10px] font-black uppercase tracking-widest text-[#7C9B93] flex items-center justify-center gap-2 hover:bg-[#7C9B93]/5 disabled:opacity-60 disabled:cursor-not-allowed"
                           >
-                            <FileText size={14} /> {isPdfParsing ? 'Membaca...' : 'Import PDF'}
+                            <FileText size={14} /> {isPdfParsing ? 'Membaca...' : 'Import PDF/Gambar'}
                           </button>
                           <button onClick={openCreateTransactionModal} className="flex-1 md:flex-none px-4 py-2.5 rounded-xl bg-[#7C9B93] text-white text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-md">
                             <Plus size={14} /> Transaksi Baru
@@ -4131,6 +4265,26 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen w-full max-w-7xl mx-auto overflow-x-hidden p-4 md:p-10 space-y-10 md:space-y-12 pb-40">
+      {isDraftPreview && adminSession && (
+        <div className="sticky top-3 z-[70] rounded-2xl border border-[#7C9B93]/20 bg-white/95 px-4 py-3 shadow-xl backdrop-blur flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#7C9B93]">Preview Draft</p>
+            <p className="text-[12px] font-bold text-main">Anda melihat draft {managedProject}. Publik belum berubah sampai tombol Publish ditekan.</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={backToAdminFromPreview} className="px-4 py-2 rounded-xl border border-[#7C9B93]/20 text-[#7C9B93] text-[10px] font-black uppercase tracking-widest">
+              Kembali Edit
+            </button>
+            <button
+              onClick={publishProjectData}
+              disabled={isPublishingProject}
+              className="px-4 py-2 rounded-xl bg-[#7C9B93] text-white text-[10px] font-black uppercase tracking-widest disabled:opacity-60"
+            >
+              {isPublishingProject ? 'Publishing...' : 'Publish'}
+            </button>
+          </div>
+        </div>
+      )}
       
       <header className="flex flex-wrap justify-between items-center gap-4 fade-in-section">
         <div className="flex min-w-0 items-center gap-4 md:gap-6">
