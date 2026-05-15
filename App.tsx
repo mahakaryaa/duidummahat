@@ -1438,7 +1438,14 @@ const App: React.FC = () => {
       .select('*')
       .order('created_at', { ascending: false })
       .limit(80);
-    if (!error && data) setAdminActivityLogs(data as AdminActivityLog[]);
+    if (!error && data) {
+      setAdminActivityLogs(data as AdminActivityLog[]);
+      return;
+    }
+    if (error) {
+      console.error('Supabase error fetching activity logs:', error);
+      showToast(error.message || 'Gagal memuat log aktivitas admin', 'error');
+    }
   };
 
   const logAdminActivity = async (
